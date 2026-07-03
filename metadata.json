@@ -1,0 +1,6 @@
+{
+  "name": "DigiBlend Toolkit",
+  "description": "Multi-tool AI SaaS platform for freelancers and indie marketers featuring meta tag generators, social bio writers, ad copywriters, and customizable limits.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
