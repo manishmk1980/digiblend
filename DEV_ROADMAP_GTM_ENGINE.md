@@ -2,7 +2,7 @@
 
 Prepared: 03 July 2026
 
-Source FRD: `G:\manish\digiblend.in\ai_gtm_automation_engine_frd_handover.md`
+Source FRD: `G:\manish\digiblend.co.in\ai_gtm_automation_engine_frd_handover.md`
 
 ## 1. Current Application Baseline
 

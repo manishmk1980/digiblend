@@ -872,7 +872,7 @@ export default function App() {
   const handleShareResult = () => {
     if (!generationResult) return;
 
-    let summaryText = `✨ DigiBlend.in AI Copywriting Tool: ${selectedTool.name} ✨\n`;
+    let summaryText = `✨ DigiBlend.co.in AI Copywriting Tool: ${selectedTool.name} ✨\n`;
     summaryText += `-----------------------------------------------\n\n`;
 
     if (selectedTool.slug === 'meta-tag-generator') {
@@ -918,7 +918,7 @@ export default function App() {
     }
 
     summaryText += `\n-----------------------------------------------\n`;
-    summaryText += `Drafted instantly with DigiBlend (https://digiblend.in)`;
+    summaryText += `Drafted instantly with DigiBlend (https://digiblend.co.in)`;
 
     navigator.clipboard.writeText(summaryText);
     setShareSuccess(true);
@@ -1005,7 +1005,7 @@ export default function App() {
                   <Shield className="w-8 h-8" />
                 </div>
                 <h1 className="text-2xl font-bold tracking-tight text-white">Root Administrator Login</h1>
-                <p className="text-xs text-slate-400 font-mono">digiblend.in/admin access portal</p>
+                <p className="text-xs text-slate-400 font-mono">digiblend.co.in/admin access portal</p>
               </div>
 
               {authError && (
@@ -1116,7 +1116,7 @@ export default function App() {
 
           <div className="flex-grow flex items-center bg-slate-950 border border-slate-800 rounded-lg px-3 py-1 font-mono text-[11px] text-slate-300 gap-2">
             <span className="text-slate-500">https://</span>
-            <span className="font-semibold text-white">digiblend.in</span>
+            <span className="font-semibold text-white">digiblend.co.in</span>
             <span className="text-rose-400 font-bold">{currentPath}</span>
           </div>
 
@@ -1177,7 +1177,7 @@ export default function App() {
 
         <div className="flex-grow flex items-center bg-slate-950 border border-slate-800 rounded-lg px-3 py-1 font-mono text-[11px] text-slate-300 gap-2">
           <span className="text-slate-500">https://</span>
-          <span className="font-semibold text-white">digiblend.in</span>
+          <span className="font-semibold text-white">digiblend.co.in</span>
           <span className="text-rose-400 font-bold">{currentPath}</span>
         </div>
 
@@ -2811,10 +2811,10 @@ export default function App() {
                       <span className="text-[9px] uppercase font-bold text-slate-400 font-mono block mb-1">Your Share Link</span>
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-[10px] text-indigo-500 dark:text-indigo-400 truncate font-mono">
-                          https://digiblend.in/?ref=ui_manish
+                          https://digiblend.co.in/?ref=ui_manish
                         </span>
                         <button
-                          onClick={() => copyToClipboard("https://digiblend.in/?ref=ui_manish", "referral_link")}
+                          onClick={() => copyToClipboard("https://digiblend.co.in/?ref=ui_manish", "referral_link")}
                           className="text-slate-400 hover:text-slate-900 dark:hover:text-white shrink-0 p-1"
                           title="Copy Link"
                         >

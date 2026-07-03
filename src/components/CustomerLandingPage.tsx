@@ -109,7 +109,7 @@ export default function CustomerLandingPage({
 
   const faqs = [
     {
-      question: 'What is DigiBlend.in and who is it for?',
+      question: 'What is DigiBlend.co.in and who is it for?',
       answer: 'DigiBlend is an AI-powered copywriting and SEO workflow accelerator designed specifically for solopreneurs, digital marketers, and freelance copywriters to create high-performing marketing copy in seconds.'
     },
     {

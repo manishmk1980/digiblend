@@ -37,7 +37,7 @@ export const TOOLS: ToolDefinition[] = [
         id: 'description',
         label: 'URL or Business Description',
         type: 'textarea',
-        placeholder: 'e.g., https://digiblend.in - A premium AI SaaS multi-tool platform for freelancers.',
+        placeholder: 'e.g., https://digiblend.co.in - A premium AI SaaS multi-tool platform for freelancers.',
         required: true,
         description: 'Provide your website URL or a 1-2 sentence description of what your page is about.'
       },
@@ -59,7 +59,7 @@ export const TOOLS: ToolDefinition[] = [
       }
     ],
     defaultInputs: {
-      description: 'DigiBlend Toolkit (digiblend.in) is a multi-tool SaaS platform offering small, highly focused AI utilities for freelancers and indie marketers.',
+      description: 'DigiBlend Toolkit (digiblend.co.in) is a multi-tool SaaS platform offering small, highly focused AI utilities for freelancers and indie marketers.',
       keywords: 'micro saas, ai tools, marketing widgets, seo generator',
       audience: 'freelancers, indie makers, solopreneurs'
     }
