@@ -8,13 +8,17 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "db:tunnel": "ssh -N -L 3307:127.0.0.1:3306 primewayz-vps",
+    "db:check": "node scripts/check-db.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/postcss": "^4.1.14",
+    "dotenv": "17.4.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "mysql2": "3.22.5",
     "next": "^15.3.5",
     "react": "^19.0.1",
     "react-dom": "^19.0.1"

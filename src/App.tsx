@@ -54,11 +54,32 @@ import {
   UserPlus,
   LogIn,
   LogOut,
-  Key
+  Key,
+  MessageCircle,
+  Send,
+  Bot,
+  Home,
+  Gem,
+  User,
+  Lightbulb
 } from 'lucide-react';
 import { TOOLS, ToolDefinition, SubscriptionPlan, UsageLog, Role, SubStatus, SaaSUser, SaaSAdminAction, SaaSSubscription } from './types';
 import MetricsOverview from './components/MetricsOverview';
 import CustomerLandingPage from './components/CustomerLandingPage';
+
+type SupportChatMessage = {
+  role: 'assistant' | 'user';
+  content: string;
+  kind?: 'normal' | 'follow-up';
+};
+
+const SUPPORT_CHAT_IDLE_MS = 90_000;
+const SUPPORT_CHAT_HINTS = [
+  'Checking the DigiBlend knowledge base...',
+  'Looking at plans, credits, and billing rules...',
+  'Matching your question to support policies...',
+  'Preparing a concise answer...',
+];
 
 export default function App() {
   // Active User session state
@@ -305,10 +326,60 @@ export default function App() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
+  const [showSupportChat, setShowSupportChat] = useState(false);
+  const [supportChatInput, setSupportChatInput] = useState('');
+  const [isSupportChatSending, setIsSupportChatSending] = useState(false);
+  const [supportChatHintIndex, setSupportChatHintIndex] = useState(0);
+  const [lastSupportFollowUpFor, setLastSupportFollowUpFor] = useState<number | null>(null);
+  const [supportChatMessages, setSupportChatMessages] = useState<SupportChatMessage[]>([
+    {
+      role: 'assistant',
+      content: 'Hi, I am Blend. Ask me about DigiBlend tools, plans, billing, credits, referrals, or account help.',
+    },
+  ]);
 
   useEffect(() => {
     setIsMac(/Mac|iPod|iPhone|iPad/.test(navigator.userAgent));
   }, []);
+
+  useEffect(() => {
+    if (!isSupportChatSending) return;
+    const timer = setInterval(() => {
+      setSupportChatHintIndex((current) => (current + 1) % SUPPORT_CHAT_HINTS.length);
+    }, 1400);
+    return () => clearInterval(timer);
+  }, [isSupportChatSending]);
+
+  useEffect(() => {
+    if (!showSupportChat || isSupportChatSending) return;
+    const lastMessage = supportChatMessages[supportChatMessages.length - 1];
+    const lastUserIndex = [...supportChatMessages].map((message) => message.role).lastIndexOf('user');
+
+    if (!lastMessage || lastMessage.role !== 'assistant' || lastMessage.kind === 'follow-up' || lastUserIndex === -1) {
+      return;
+    }
+
+    if (lastSupportFollowUpFor === lastUserIndex) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      const lastUserMessage = supportChatMessages[lastUserIndex]?.content || 'your DigiBlend question';
+      const topic = lastUserMessage.length > 82 ? `${lastUserMessage.slice(0, 79)}...` : lastUserMessage;
+
+      setSupportChatMessages((messages) => [
+        ...messages,
+        {
+          role: 'assistant',
+          kind: 'follow-up',
+          content: `Quick reminder: we were discussing "${topic}".\n\nIs there anything else I can help you with today? If you would rather speak with the team, you can book a call appointment.`,
+        },
+      ]);
+      setLastSupportFollowUpFor(lastUserIndex);
+    }, SUPPORT_CHAT_IDLE_MS);
+
+    return () => clearTimeout(timer);
+  }, [showSupportChat, isSupportChatSending, supportChatMessages, lastSupportFollowUpFor]);
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -449,7 +520,7 @@ export default function App() {
       setPlaybookPurchased(true);
       localStorage.setItem('digiblend_playbook_bought', 'true');
       setBuyingPlaybook(false);
-      alert("🎉 Direct transaction successful! You have purchased the Premium Growth Playbook. Download your PDF now from the console.");
+      alert("Direct transaction successful! You have purchased the Premium Growth Playbook. Download your PDF now from the console.");
     }, 1800);
   };
 
@@ -564,7 +635,7 @@ export default function App() {
 
     // Guest check
     if (!currentUser) {
-      setApiError('🔐 Account Required: Please register or sign in (or click on a guest test seat in the home screen) to run live Gemini AI copywriting generations.');
+      setApiError('Account Required: Please register or sign in (or click on a guest test seat in the home screen) to run live Gemini AI copywriting generations.');
       return;
     }
 
@@ -711,7 +782,7 @@ export default function App() {
       setCurrentUser(newUser);
       setRole('CUSTOMER');
       setPlan('FREE');
-      setAuthSuccess('🎉 Account successfully created! Welcome to DigiBlend.');
+      setAuthSuccess('Account successfully created! Welcome to DigiBlend.');
       setAuthEmail('');
       setAuthPassword('');
       setAuthReferral('');
@@ -753,12 +824,58 @@ export default function App() {
       setCurrentUser(adminUser);
       setRole('ADMIN');
       setPlan('PRO');
-      setAuthSuccess('🛡️ Root Administrator verified. Welcome to the Control Panel.');
+      setAuthSuccess('Root Administrator verified. Welcome to the Control Panel.');
       setAuthEmail('');
       setAuthPassword('');
       setActiveSection('admin');
     } else {
       setAuthError('Access Denied: Invalid root administrator credentials.');
+    }
+  };
+
+  const handleSupportChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const message = supportChatInput.trim();
+    if (!message || isSupportChatSending) return;
+
+    const nextMessages: SupportChatMessage[] = [
+      ...supportChatMessages,
+      { role: 'user', content: message },
+    ];
+
+    setSupportChatMessages(nextMessages);
+    setLastSupportFollowUpFor(null);
+    setSupportChatInput('');
+    setIsSupportChatSending(true);
+    setSupportChatHintIndex(0);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: nextMessages }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Support chat failed');
+      }
+
+      setSupportChatMessages([
+        ...nextMessages,
+        { role: 'assistant', content: data.reply || 'I could not generate a reply just now.' },
+      ]);
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Support chat failed';
+      setSupportChatMessages([
+        ...nextMessages,
+        {
+          role: 'assistant',
+          content: `I could not connect to support chat right now. ${messageText}`,
+        },
+      ]);
+    } finally {
+      setIsSupportChatSending(false);
     }
   };
 
@@ -864,7 +981,7 @@ export default function App() {
       setPlan(overridePlanValue);
     }
     
-    alert(`⚡ Administrative override successfully applied for ${selectedAdminUser.email}!`);
+    alert(`Administrative override successfully applied for ${selectedAdminUser.email}!`);
     setSelectedAdminUser(null);
     setOverridePlanNotes('');
   };
@@ -872,43 +989,43 @@ export default function App() {
   const handleShareResult = () => {
     if (!generationResult) return;
 
-    let summaryText = `✨ DigiBlend.co.in AI Copywriting Tool: ${selectedTool.name} ✨\n`;
+    let summaryText = `DigiBlend.co.in AI Copywriting Tool: ${selectedTool.name}\n`;
     summaryText += `-----------------------------------------------\n\n`;
 
     if (selectedTool.slug === 'meta-tag-generator') {
-      summaryText += `📌 SEO TITLE:\n${generationResult.title || ''}\n\n`;
-      summaryText += `📌 METADESC:\n${generationResult.description || ''}\n\n`;
-      summaryText += `📌 KEYWORDS:\n${generationResult.keywords || ''}\n`;
+      summaryText += `SEO TITLE:\n${generationResult.title || ''}\n\n`;
+      summaryText += `METADESC:\n${generationResult.description || ''}\n\n`;
+      summaryText += `KEYWORDS:\n${generationResult.keywords || ''}\n`;
     } else if (selectedTool.slug === 'social-bio-writer') {
       if (Array.isArray(generationResult.bios)) {
         generationResult.bios.forEach((bio: any, idx: number) => {
-          summaryText += `📝 BIO OPTION #${idx + 1}:\n${bio.text || ''}\n(Strategy: ${bio.strategy || ''})\n\n`;
+          summaryText += `BIO OPTION #${idx + 1}:\n${bio.text || ''}\n(Strategy: ${bio.strategy || ''})\n\n`;
         });
       }
     } else if (selectedTool.slug === 'cold-email-writer') {
       if (Array.isArray(generationResult.subjectLines)) {
-        summaryText += `📧 SUBJECT LINES:\n` + generationResult.subjectLines.map((s: string, idx: number) => `  ${idx + 1}. ${s}`).join('\n') + `\n\n`;
+        summaryText += `SUBJECT LINES:\n` + generationResult.subjectLines.map((s: string, idx: number) => `  ${idx + 1}. ${s}`).join('\n') + `\n\n`;
       }
-      summaryText += `📧 EMAIL BODY:\n${generationResult.emailBody || ''}\n`;
+      summaryText += `EMAIL BODY:\n${generationResult.emailBody || ''}\n`;
     } else if (selectedTool.slug === 'ad-copy-generator') {
       if (Array.isArray(generationResult.copies)) {
         generationResult.copies.forEach((copy: any, idx: number) => {
-          summaryText += `📢 AD COPY OPTION #${idx + 1}:\nHeadline: ${copy.headline || ''}\nPrimary Text: ${copy.primaryText || ''}\nCTA Recommended: ${copy.ctaRecommended || ''}\n\n`;
+          summaryText += `AD COPY OPTION #${idx + 1}:\nHeadline: ${copy.headline || ''}\nPrimary Text: ${copy.primaryText || ''}\nCTA Recommended: ${copy.ctaRecommended || ''}\n\n`;
         });
       }
     } else if (selectedTool.slug === 'business-name-checker') {
       if (Array.isArray(generationResult.businessNames)) {
         generationResult.businessNames.forEach((item: any, idx: number) => {
-          summaryText += `💼 COMPANY SUGGESTION #${idx + 1}:\nName: ${item.name || ''}\nTagline: ${item.tagline || ''}\nDomain Suggestion: ${item.domainSuggestion || ''}\nConcept: ${item.brandConcept || ''}\n\n`;
+          summaryText += `COMPANY SUGGESTION #${idx + 1}:\nName: ${item.name || ''}\nTagline: ${item.tagline || ''}\nDomain Suggestion: ${item.domainSuggestion || ''}\nConcept: ${item.brandConcept || ''}\n\n`;
         });
       }
     } else if (selectedTool.slug === 'readability-scorer') {
-      summaryText += `📊 READABILITY SCORE: ${generationResult.score || 0}/100 (${generationResult.readingEase || ''})\n`;
-      summaryText += `🎓 COMPREHENSION LEVEL: ${generationResult.gradeLevel || ''}\n`;
-      summaryText += `📝 TEXT STATS: ${generationResult.wordCount || 0} words, ${generationResult.sentenceCount || 0} sentences, ${generationResult.passiveVoicePercent || 0}% Passive Voice\n\n`;
-      summaryText += `💡 SUMMARY ANALYSIS:\n${generationResult.overallSummary || ''}\n\n`;
+      summaryText += `READABILITY SCORE: ${generationResult.score || 0}/100 (${generationResult.readingEase || ''})\n`;
+      summaryText += `COMPREHENSION LEVEL: ${generationResult.gradeLevel || ''}\n`;
+      summaryText += `TEXT STATS: ${generationResult.wordCount || 0} words, ${generationResult.sentenceCount || 0} sentences, ${generationResult.passiveVoicePercent || 0}% Passive Voice\n\n`;
+      summaryText += `SUMMARY ANALYSIS:\n${generationResult.overallSummary || ''}\n\n`;
       if (Array.isArray(generationResult.suggestions)) {
-        summaryText += `🛠️ KEY SUGGESTIONS:\n`;
+        summaryText += `KEY SUGGESTIONS:\n`;
         generationResult.suggestions.forEach((sug: any, idx: number) => {
           summaryText += `  ${idx + 1}. [${sug.type || 'improvement'}] ${sug.reason || ''}\n`;
         });
@@ -1009,8 +1126,9 @@ export default function App() {
               </div>
 
               {authError && (
-                <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 font-medium leading-relaxed">
-                  ⚠️ {authError}
+                <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 font-medium leading-relaxed flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>{authError}</span>
                 </div>
               )}
 
@@ -1049,7 +1167,10 @@ export default function App() {
               </form>
 
               <div className="pt-4 border-t border-slate-800/80 text-center space-y-2">
-                <p className="text-[10px] text-slate-500">🛡️ PRE-GENERATED ROOT CREDENTIALS FOR TESTING:</p>
+                <p className="text-[10px] text-slate-500 inline-flex items-center justify-center gap-1.5">
+                  <Shield className="w-3 h-3" />
+                  PRE-GENERATED ROOT CREDENTIALS FOR TESTING:
+                </p>
                 <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-[10px] font-mono text-left space-y-1 text-slate-400">
                   <div className="flex justify-between">
                     <span className="text-slate-500">Email:</span>
@@ -1088,59 +1209,6 @@ export default function App() {
   if (authComponent) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
-        {/* High-Fidelity Simulated Browser Address Bar */}
-        <div className="bg-slate-900 text-slate-400 text-xs px-4 py-2 border-b border-slate-800 flex items-center gap-3 select-none font-sans shrink-0">
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="w-3 h-3 rounded-full bg-red-500/80" />
-            <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-            <div className="w-3 h-3 rounded-full bg-green-500/80" />
-          </div>
-          
-          <div className="flex items-center gap-2 shrink-0">
-            <button 
-              onClick={() => navigateToPath('/')}
-              disabled={currentPath === '/'}
-              className="p-1 hover:bg-slate-800 rounded text-slate-400 disabled:opacity-30 transition-colors cursor-pointer"
-              title="Go to Customer Site"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-            </button>
-            <button 
-              onClick={() => window.location.reload()}
-              className="p-1 hover:bg-slate-800 rounded text-slate-400 transition-colors cursor-pointer"
-              title="Reload container runtime"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="flex-grow flex items-center bg-slate-950 border border-slate-800 rounded-lg px-3 py-1 font-mono text-[11px] text-slate-300 gap-2">
-            <span className="text-slate-500">https://</span>
-            <span className="font-semibold text-white">digiblend.co.in</span>
-            <span className="text-rose-400 font-bold">{currentPath}</span>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-              Preview Environment
-            </span>
-            {currentPath === '/' ? (
-              <button
-                onClick={() => navigateToPath('/admin')}
-                className="px-2.5 py-1 text-[10px] bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 font-mono font-bold rounded-md border border-rose-500/20 transition-all cursor-pointer"
-              >
-                Go to /admin
-              </button>
-            ) : (
-              <button
-                onClick={() => navigateToPath('/')}
-                className="px-2.5 py-1 text-[10px] bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 font-mono font-bold rounded-md border border-indigo-500/20 transition-all cursor-pointer"
-              >
-                Go to Home (/)
-              </button>
-            )}
-          </div>
-        </div>
         {authComponent}
       </div>
     );
@@ -1148,60 +1216,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
-      
-      {/* High-Fidelity Simulated Browser Address Bar */}
-      <div className="bg-slate-900 text-slate-400 text-xs px-4 py-2 border-b border-slate-800 flex items-center gap-3 select-none font-sans shrink-0 z-50">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <div className="w-3 h-3 rounded-full bg-red-500/80" />
-          <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-          <div className="w-3 h-3 rounded-full bg-green-500/80" />
-        </div>
-        
-        <div className="flex items-center gap-2 shrink-0">
-          <button 
-            onClick={() => navigateToPath('/')}
-            disabled={currentPath === '/'}
-            className="p-1 hover:bg-slate-800 rounded text-slate-400 disabled:opacity-30 transition-colors cursor-pointer"
-            title="Go to Customer Site"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-          </button>
-          <button 
-            onClick={() => window.location.reload()}
-            className="p-1 hover:bg-slate-800 rounded text-slate-400 transition-colors cursor-pointer"
-            title="Reload container runtime"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="flex-grow flex items-center bg-slate-950 border border-slate-800 rounded-lg px-3 py-1 font-mono text-[11px] text-slate-300 gap-2">
-          <span className="text-slate-500">https://</span>
-          <span className="font-semibold text-white">digiblend.co.in</span>
-          <span className="text-rose-400 font-bold">{currentPath}</span>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-            Preview Environment
-          </span>
-          {currentPath === '/' ? (
-            <button
-              onClick={() => navigateToPath('/admin')}
-              className="px-2.5 py-1 text-[10px] bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 font-mono font-bold rounded-md border border-rose-500/20 transition-all cursor-pointer"
-            >
-              Go to /admin
-            </button>
-          ) : (
-            <button
-              onClick={() => navigateToPath('/')}
-              className="px-2.5 py-1 text-[10px] bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 font-mono font-bold rounded-md border border-indigo-500/20 transition-all cursor-pointer"
-            >
-              Go to Home (/)
-            </button>
-          )}
-        </div>
-      </div>
 
       {/* Dynamic Background Accents */}
       <div className="absolute top-0 right-1/4 w-96 h-96 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -1234,55 +1248,60 @@ export default function App() {
             {!currentUser && (
               <button
                 onClick={() => setActiveSection('landing')}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+                className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
                   activeSection === 'landing'
                     ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                 }`}
               >
-                🏠 Home
+                <Home className="w-3.5 h-3.5" />
+                Home
               </button>
             )}
             <button
               onClick={() => setActiveSection('tools')}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+              className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
                 activeSection === 'tools'
                   ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              ⚡ AI Utilities
+              <Zap className="w-3.5 h-3.5" />
+              AI Utilities
             </button>
             <button
               onClick={() => setActiveSection('pricing')}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+              className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
                 activeSection === 'pricing'
                   ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              💎 Pricing Plan
+              <Gem className="w-3.5 h-3.5" />
+              Pricing Plan
             </button>
             <button
               onClick={() => setActiveSection('account')}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+              className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
                 activeSection === 'account'
                   ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              👤 Usage & Account
+              <User className="w-3.5 h-3.5" />
+              Usage & Account
             </button>
             {role === 'ADMIN' && (
               <button
                 onClick={() => setActiveSection('admin')}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all ${
+                className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
                   activeSection === 'admin'
                     ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/10'
                     : 'text-slate-500 dark:text-slate-400 hover:text-rose-500 dark:hover:text-rose-400'
                 }`}
               >
-                🛡️ Admin Panel
+                <Shield className="w-3.5 h-3.5" />
+                Admin Panel
               </button>
             )}
           </nav>
@@ -1329,12 +1348,14 @@ export default function App() {
                   : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800'
               }`}>
                 {currentUser.role === 'ADMIN' ? (
-                  <span className="text-[9.5px] font-mono font-black bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded-md uppercase tracking-wider animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.25)]">
-                    🛡️ ADMIN
+                  <span className="text-[9.5px] font-mono font-black bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded-md uppercase tracking-wider animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.25)] inline-flex items-center gap-1">
+                    <Shield className="w-3 h-3" />
+                    ADMIN
                   </span>
                 ) : (
-                  <span className="text-[9.5px] font-mono font-bold bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                    👤 USER
+                  <span className="text-[9.5px] font-mono font-bold bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-md uppercase tracking-wider inline-flex items-center gap-1">
+                    <User className="w-3 h-3" />
+                    USER
                   </span>
                 )}
                 <span className="hidden lg:inline text-[10px] font-mono text-slate-500 px-1 truncate max-w-[120px]" title={currentUser.email}>
@@ -1840,10 +1861,10 @@ export default function App() {
                   <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-xl flex items-start gap-3.5 text-rose-600 dark:text-rose-400 animate-slide-up">
                     <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
                     <div className="text-xs space-y-1">
-                      <p className="font-bold">Gemini API Connection Problem</p>
+                      <p className="font-bold">AI Provider Connection Problem</p>
                       <p className="leading-relaxed">{apiError}</p>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                        Verify that process.env.GEMINI_API_KEY is correctly configured inside your AI Studio Secrets panel.
+                        Verify that OPENROUTER_API_KEY or GEMINI_API_KEY is configured in your local environment.
                       </p>
                     </div>
                   </div>
@@ -2553,7 +2574,8 @@ export default function App() {
             {/* Header copy */}
             <div className="text-center space-y-3 max-w-2xl mx-auto">
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${currentAccent.badge}`}>
-                💎 Flexible upgrade options
+                <Gem className="w-3.5 h-3.5" />
+                Flexible upgrade options
               </span>
               <h1 className="text-3.5xl md:text-4.5xl font-display font-black text-slate-900 dark:text-white tracking-tight">
                 Self-Serve Pricing Built for Speed
@@ -2678,8 +2700,9 @@ export default function App() {
             </div>
 
             {/* Satisfaction Trust Banner */}
-            <div className="max-w-xl mx-auto p-5 bg-slate-100 dark:bg-slate-900 rounded-xl text-center border border-slate-200 dark:border-slate-800 text-xs text-slate-500">
-              🔒 Fully secured. Complete your upgrade simulated via standard sandbox Razorpay SDK callbacks. Cancel anytime from your account console with a single click.
+            <div className="max-w-xl mx-auto p-5 bg-slate-100 dark:bg-slate-900 rounded-xl text-center border border-slate-200 dark:border-slate-800 text-xs text-slate-500 flex items-start justify-center gap-2">
+              <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>Fully secured. Complete your upgrade simulated via standard sandbox Razorpay SDK callbacks. Cancel anytime from your account console with a single click.</span>
             </div>
 
           </div>
@@ -3172,8 +3195,9 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="p-3.5 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 text-xs text-slate-500 leading-relaxed">
-                      💡 <strong>Growth Advice:</strong> Your referral-driven registrant loop accounts for {saasUsers.filter(u => u.referredBy).length} customer signups. Running a localized social offer to your existing partner referrers will increase the MRR quickly.
+                    <div className="p-3.5 bg-slate-50 dark:bg-slate-950/60 rounded-xl border border-slate-200 dark:border-slate-800 text-xs text-slate-500 leading-relaxed flex items-start gap-2">
+                      <Lightbulb className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+                      <span><strong>Growth Advice:</strong> Your referral-driven registrant loop accounts for {saasUsers.filter(u => u.referredBy).length} customer signups. Running a localized social offer to your existing partner referrers will increase the MRR quickly.</span>
                     </div>
                   </div>
 
@@ -3552,7 +3576,8 @@ export default function App() {
                 
                 {activeInput.description && (
                   <p className="text-xs text-slate-400 dark:text-slate-500 italic pl-1 flex items-center gap-1.5">
-                    💡 <span>{activeInput.description}</span>
+                    <Lightbulb className="w-3.5 h-3.5 shrink-0" />
+                    <span>{activeInput.description}</span>
                   </p>
                 )}
               </div>
@@ -3844,6 +3869,133 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Floating customer support chat */}
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
+        {showSupportChat && (
+          <div className="w-[min(92vw,400px)] h-[560px] bg-white/95 dark:bg-slate-950/95 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col backdrop-blur-xl">
+            <div className={`px-4 py-3 bg-gradient-to-r ${currentAccent.fromTo} text-white flex items-center justify-between`}>
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shadow-inner">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold leading-tight">Blend Support</p>
+                  <p className="text-[10px] text-white/75 font-mono">Online • plans, credits, billing</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSupportChat(false)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+                aria-label="Close support chat"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80">
+              <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Answers from the DigiBlend support knowledge base</span>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900">
+              {supportChatMessages.map((message, index) => (
+                <div
+                  key={`${message.role}-${index}`}
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[84%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed whitespace-pre-wrap shadow-sm ${
+                      message.role === 'user'
+                        ? `${currentAccent.bg} text-white`
+                        : message.kind === 'follow-up'
+                          ? 'bg-indigo-50 dark:bg-indigo-500/10 text-slate-700 dark:text-slate-100 border border-indigo-200 dark:border-indigo-500/20'
+                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    {message.content}
+                    {message.kind === 'follow-up' && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <a
+                          href="https://digiblend.in/contact"
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-white ${currentAccent.bg}`}
+                        >
+                          Book a call
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                        <a
+                          href="mailto:support@digiblend.in"
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800"
+                        >
+                          Email support
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {isSupportChatSending && (
+                <div className="flex justify-start">
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-slate-500 shadow-sm space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse [animation-delay:120ms]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-pulse [animation-delay:240ms]" />
+                    </div>
+                    <p>{SUPPORT_CHAT_HINTS[supportChatHintIndex]}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleSupportChatSubmit} className="p-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {['Free vs Pro', 'Credits', 'Refunds'].map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => setSupportChatInput(suggestion)}
+                    className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-900 text-[10px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={supportChatInput}
+                  onChange={(e) => setSupportChatInput(e.target.value)}
+                  placeholder="Ask about plans, credits, billing..."
+                  className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="submit"
+                  disabled={!supportChatInput.trim() || isSupportChatSending}
+                  className={`w-10 h-10 rounded-xl ${currentAccent.bg} hover:opacity-90 disabled:opacity-50 text-white flex items-center justify-center transition-opacity`}
+                  aria-label="Send support chat message"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setShowSupportChat((prev) => !prev)}
+          className={`h-12 px-4 rounded-full bg-gradient-to-r ${currentAccent.fromTo} text-white shadow-xl shadow-indigo-500/20 flex items-center gap-2 text-sm font-bold hover:opacity-95 transition-all`}
+          aria-label="Open support chat"
+        >
+          <MessageCircle className="w-5 h-5" />
+          <span className="hidden sm:inline">Chat</span>
+        </button>
+      </div>
 
       {/* Footer copyright notice block */}
       <footer className="py-6 border-t border-slate-200 dark:border-slate-900 text-center text-xs text-slate-400 dark:text-slate-600 bg-white dark:bg-slate-950 transition-all duration-300">
