@@ -102,31 +102,40 @@ export default function App() {
   const [currentPath, setCurrentPath] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash;
-      return (hash === '#/admin' || hash === '#admin') ? '/admin' : '/';
+      return window.location.pathname === '/admin' || hash === '#/admin' || hash === '#admin' ? '/admin' : '/';
     }
     return '/';
   });
 
   useEffect(() => {
-    const handleHashChange = () => {
+    const resolveClientPath = () => {
       const hash = window.location.hash;
-      if (hash === '#/admin' || hash === '#admin') {
+      if (window.location.pathname === '/admin' || hash === '#/admin' || hash === '#admin') {
         setCurrentPath('/admin');
       } else {
         setCurrentPath('/');
       }
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+
+    resolveClientPath();
+    window.addEventListener('hashchange', resolveClientPath);
+    window.addEventListener('popstate', resolveClientPath);
+    return () => {
+      window.removeEventListener('hashchange', resolveClientPath);
+      window.removeEventListener('popstate', resolveClientPath);
+    };
   }, []);
 
   const navigateToPath = (path: string) => {
     setCurrentPath(path);
-    if (path === '/admin') {
-      window.location.hash = '#/admin';
-    } else {
-      window.location.hash = '#/';
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', path === '/admin' ? '/admin' : '/');
     }
+  };
+
+  const navigateToSection = (section: 'landing' | 'tools' | 'pricing' | 'account') => {
+    navigateToPath('/');
+    setActiveSection(section);
   };
 
   // Role and Onboarding states
@@ -476,10 +485,12 @@ export default function App() {
   // Synchronize path and section gating rules
   useEffect(() => {
     if (currentPath === '/admin') {
-      if (role !== 'ADMIN') {
+      if (currentUser && role !== 'ADMIN') {
         navigateToPath('/');
       } else {
-        setActiveSection('admin');
+        if (role === 'ADMIN') {
+          setActiveSection('admin');
+        }
       }
     } else {
       if (activeSection === 'admin') {
@@ -1226,7 +1237,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           
           {/* Logo Brand Title */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveSection(currentUser ? 'tools' : 'landing')}>
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigateToSection(currentUser ? 'tools' : 'landing')}>
             <div className={`p-2 rounded-xl bg-gradient-to-tr ${currentAccent.fromTo} text-white shadow-md shadow-indigo-500/10`}>
               <Terminal className="w-5 h-5" />
             </div>
@@ -1247,7 +1258,7 @@ export default function App() {
           <nav className="hidden md:flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200/60 dark:border-slate-800">
             {!currentUser && (
               <button
-                onClick={() => setActiveSection('landing')}
+                onClick={() => navigateToSection('landing')}
                 className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
                   activeSection === 'landing'
                     ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
@@ -1259,7 +1270,7 @@ export default function App() {
               </button>
             )}
             <button
-              onClick={() => setActiveSection('tools')}
+              onClick={() => navigateToSection('tools')}
               className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
                 activeSection === 'tools'
                   ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
@@ -1270,7 +1281,7 @@ export default function App() {
               AI Utilities
             </button>
             <button
-              onClick={() => setActiveSection('pricing')}
+              onClick={() => navigateToSection('pricing')}
               className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
                 activeSection === 'pricing'
                   ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
@@ -1281,7 +1292,7 @@ export default function App() {
               Pricing Plan
             </button>
             <button
-              onClick={() => setActiveSection('account')}
+              onClick={() => navigateToSection('account')}
               className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
                 activeSection === 'account'
                   ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
@@ -1293,7 +1304,7 @@ export default function App() {
             </button>
             {role === 'ADMIN' && (
               <button
-                onClick={() => setActiveSection('admin')}
+                onClick={() => navigateToPath('/admin')}
                 className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
                   activeSection === 'admin'
                     ? 'bg-rose-500 text-white shadow-sm shadow-rose-500/10'
@@ -1375,7 +1386,7 @@ export default function App() {
             {!currentUser && (
               <button
                 onClick={() => {
-                  setActiveSection('landing');
+                  navigateToSection('landing');
                   setTimeout(() => {
                     const el = document.getElementById('register');
                     if (el) {
@@ -1414,7 +1425,7 @@ export default function App() {
       <div className="md:hidden flex items-center justify-around bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-900 text-xs py-2 sticky top-16 z-30 shadow-sm">
         {!currentUser && (
           <button
-            onClick={() => setActiveSection('landing')}
+            onClick={() => navigateToSection('landing')}
             className={`flex flex-col items-center gap-1 font-semibold ${activeSection === 'landing' ? currentAccent.text : 'text-slate-500'}`}
           >
             <Compass className="w-4 h-4" />
@@ -1422,21 +1433,21 @@ export default function App() {
           </button>
         )}
         <button
-          onClick={() => setActiveSection('tools')}
+          onClick={() => navigateToSection('tools')}
           className={`flex flex-col items-center gap-1 font-semibold ${activeSection === 'tools' ? currentAccent.text : 'text-slate-500'}`}
         >
           <Zap className="w-4 h-4" />
           <span>Tools</span>
         </button>
         <button
-          onClick={() => setActiveSection('pricing')}
+          onClick={() => navigateToSection('pricing')}
           className={`flex flex-col items-center gap-1 font-semibold ${activeSection === 'pricing' ? currentAccent.text : 'text-slate-500'}`}
         >
           <CreditCard className="w-4 h-4" />
           <span>Pricing</span>
         </button>
         <button
-          onClick={() => setActiveSection('account')}
+          onClick={() => navigateToSection('account')}
           className={`flex flex-col items-center gap-1 font-semibold ${activeSection === 'account' ? currentAccent.text : 'text-slate-500'}`}
         >
           <History className="w-4 h-4" />
@@ -1444,7 +1455,7 @@ export default function App() {
         </button>
         {role === 'ADMIN' && (
           <button
-            onClick={() => setActiveSection('admin')}
+            onClick={() => navigateToPath('/admin')}
             className={`flex flex-col items-center gap-1 font-semibold ${activeSection === 'admin' ? 'text-rose-500' : 'text-slate-500'}`}
           >
             <Shield className="w-4 h-4" />
