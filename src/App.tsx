@@ -61,7 +61,8 @@ import {
   Home,
   Gem,
   User,
-  Lightbulb
+  Lightbulb,
+  Database
 } from 'lucide-react';
 import { TOOLS, ToolDefinition, SubscriptionPlan, UsageLog, Role, SubStatus, SaaSUser, SaaSAdminAction, SaaSSubscription } from './types';
 import MetricsOverview from './components/MetricsOverview';
@@ -1217,6 +1218,8 @@ export default function App() {
   };
 
   const authComponent = renderAuthOrContent();
+  const isAdminWorkspace = currentPath === '/admin';
+
   if (authComponent) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
@@ -1233,6 +1236,82 @@ export default function App() {
       <div className="absolute bottom-20 left-10 w-96 h-96 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Navigation Top Header */}
+      {isAdminWorkspace ? (
+      <header className="border-b border-rose-500/20 bg-slate-950/95 backdrop-blur-md sticky top-0 z-40 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 min-h-16 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-rose-500 text-white shadow-md shadow-rose-500/20">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-display font-bold text-white leading-none tracking-tight text-lg">
+                  DigiBlend<span className="text-rose-400">.in</span>
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-md font-black uppercase tracking-wider bg-rose-500/10 text-rose-300 border border-rose-500/25">
+                  Super Admin
+                </span>
+              </div>
+              <span className="text-slate-500 text-[10px] block font-mono">
+                Tenant, subscription, payment, usage, and audit operations
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigateToSection('tools')}
+              className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-700 text-xs font-bold inline-flex items-center gap-2"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Customer App
+            </button>
+            <a
+              href="/api/health/db"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-700 text-xs font-bold inline-flex items-center gap-2"
+            >
+              <Database className="w-3.5 h-3.5" />
+              DB Health
+            </a>
+            <button
+              id="admin-theme-toggle"
+              onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
+              className="p-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-800 transition-all cursor-pointer"
+              aria-label="Toggle theme"
+            >
+              {theme === 'light' ? (
+                <Moon className="w-4 h-4 text-slate-300" />
+              ) : (
+                <Sun className="w-4 h-4 text-amber-400" />
+              )}
+            </button>
+
+            {currentUser && (
+              <div className="flex items-center gap-2 p-1 rounded-xl border border-rose-500/25 bg-rose-500/5">
+                <span className="text-[9.5px] font-mono font-black bg-rose-500/15 text-rose-300 border border-rose-500/25 px-2 py-0.5 rounded-md uppercase tracking-wider inline-flex items-center gap-1">
+                  <Shield className="w-3 h-3" />
+                  Operator
+                </span>
+                <span className="hidden lg:inline text-[10px] font-mono text-slate-400 px-1 truncate max-w-[170px]" title={currentUser.email}>
+                  {currentUser.email}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="p-1.5 hover:bg-rose-500/10 text-slate-400 hover:text-rose-300 rounded-lg transition-colors cursor-pointer flex items-center gap-1 font-mono text-[10px]"
+                  title="Sign Out of Admin Session"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline font-bold">Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+      ) : (
       <header className="border-b border-slate-200 dark:border-slate-900 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-40 transition-colors duration-300 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           
@@ -1420,8 +1499,10 @@ export default function App() {
 
         </div>
       </header>
+      )}
 
       {/* Mobile Sticky Navigation Banner */}
+      {!isAdminWorkspace && (
       <div className="md:hidden flex items-center justify-around bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-900 text-xs py-2 sticky top-16 z-30 shadow-sm">
         {!currentUser && (
           <button
@@ -1463,6 +1544,7 @@ export default function App() {
           </button>
         )}
       </div>
+      )}
 
       {/* Main Container Workspace */}
       <main className="flex-grow max-w-7xl mx-auto px-4 md:px-6 py-8 w-full z-10">
@@ -3054,10 +3136,10 @@ export default function App() {
                   Gated Root Operator Environment
                 </span>
                 <h1 className="text-2.5xl md:text-3.5xl font-display font-black text-slate-900 dark:text-white tracking-tight">
-                  DigiBlend SaaS Command Panel
+                  Super Admin Tenant Operations
                 </h1>
                 <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400">
-                  Monitor key SaaS health KPIs, override partner subscriptions, manage client roles, and audit developer system logs.
+                  Manage subscribed customer workspaces, subscription status, payment records, usage history, and audit activity without mixing into tenant onboarding flows.
                 </p>
               </div>
 
@@ -3215,7 +3297,7 @@ export default function App() {
                   {/* Right Column: Founder Quick Actions */}
                   <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-900 p-5 shadow-sm space-y-4">
                     <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
-                      Founder Quick Command Shortcuts
+                      Super Admin Operations
                     </span>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -3227,11 +3309,11 @@ export default function App() {
                         className="p-4 bg-slate-50 dark:bg-slate-950 hover:border-slate-300 dark:hover:border-slate-800 rounded-xl border border-slate-200 dark:border-slate-900 text-left space-y-1 transition-all cursor-pointer group"
                       >
                         <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
-                          <span>User Access Overrides</span>
+                          <span>Customer Access Overrides</span>
                           <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-500 transition-colors" />
                         </h4>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
-                          Instantly promote customer roles, grant custom PRO coupons, and edit access credentials.
+                          Review tenant roles, subscription plans, and controlled access overrides for subscribed customer workspaces.
                         </p>
                       </button>
 
@@ -3242,11 +3324,11 @@ export default function App() {
                         className="p-4 bg-slate-50 dark:bg-slate-950 hover:border-slate-300 dark:hover:border-slate-800 rounded-xl border border-slate-200 dark:border-slate-900 text-left space-y-1 transition-all cursor-pointer group"
                       >
                         <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
-                          <span>Developer Security Audit</span>
+                          <span>Admin Activity Audit</span>
                           <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-500 transition-colors" />
                         </h4>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
-                          Inspect the real-time timeline logs of all administrative manipulations performed in this active container.
+                          Inspect administrative changes, subscription overrides, and tenant access events from this control plane.
                         </p>
                       </button>
                     </div>

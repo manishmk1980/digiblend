@@ -637,8 +637,10 @@ export default function CustomerLandingPage({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <div className="space-y-3">
             <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-400">Existing app access</p>
-            <h2 className="text-2xl font-black text-slate-900 dark:text-white">Need the original AI tools?</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">The audit funnel is now the primary landing conversion path. Existing copy, SEO, and account tools remain available from the navigation.</p>
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white">Client workspace for your business</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Each subscribed customer gets a separate workspace for audit history, generated assets, uploaded samples, usage limits, and billing status. Super-admin access is managed separately.
+            </p>
             <button onClick={onExploreTools} className={`px-5 py-3 rounded-xl ${currentAccent.bg} text-white font-bold text-sm`}>
               Explore AI Utilities
             </button>
@@ -646,8 +648,11 @@ export default function CustomerLandingPage({
 
           <form onSubmit={onAuthSubmit} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-5 space-y-4" id="register">
             <div>
-              <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-indigo-500">Client Login</p>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-1">{isSignUp ? 'Claim your workspace' : 'Access your workspace'}</h3>
+              <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-indigo-500">Customer Tenant Access</p>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-1">{isSignUp ? 'Create a customer workspace' : 'Sign in to customer workspace'}</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Use this for client teams, subscription users, and tenant history. Super admins use the dedicated admin console.
+              </p>
             </div>
 
             {(authError || authSuccess) && (
@@ -674,10 +679,10 @@ export default function CustomerLandingPage({
               />
             )}
             <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-colors">
-              {isSignUp ? 'Register Workspace' : 'Access Workspace'}
+              {isSignUp ? 'Create Customer Workspace' : 'Sign In to Workspace'}
             </button>
             <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="w-full text-xs font-bold text-indigo-500 hover:underline">
-              {isSignUp ? 'Already have access? Sign in' : 'New client? Create access'}
+              {isSignUp ? 'Already subscribed? Sign in' : 'New customer? Create workspace'}
             </button>
           </form>
         </div>
