@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Globe,
   Users,
@@ -65,6 +65,9 @@ import { TOOLS, ToolDefinition, SubscriptionPlan, UsageLog, Role, SubStatus, Saa
 import MetricsOverview from './components/MetricsOverview';
 import CustomerLandingPage from './components/CustomerLandingPage';
 import { ChatWidget } from './components/chat/ChatWidget';
+import { ClerkAuthControls } from './components/auth/ClerkAuthControls';
+import { ClerkSessionBridge } from './components/auth/ClerkSessionBridge';
+import { isClerkPubliclyConfigured } from './lib/clerk-config';
 
 type BackendOverview = {
   status: 'healthy' | 'not_configured' | 'error';
@@ -844,6 +847,46 @@ export default function App() {
     }
   };
 
+  const handleClerkSession = useCallback(({ email, role: clerkRole }: { email: string; role: Role }) => {
+    const normalizedEmail = email.toLowerCase();
+    if (currentUser?.email.toLowerCase() === normalizedEmail && currentUser.role === clerkRole) {
+      return;
+    }
+
+    const existingUser = saasUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+    const sessionUser: SaaSUser = existingUser || {
+      id: `usr_clerk_${Math.random().toString(36).substring(2, 11)}`,
+      email: normalizedEmail,
+      role: clerkRole,
+      plan: 'FREE',
+      referredBy: referredBy || null,
+      createdAt: new Date().toISOString(),
+      usageCount: 0,
+      lastActive: new Date().toISOString()
+    };
+
+    const refreshedUser = {
+      ...sessionUser,
+      role: clerkRole,
+      lastActive: new Date().toISOString()
+    };
+
+    setSaasUsers(prev => {
+      const exists = prev.some(u => u.email.toLowerCase() === normalizedEmail);
+      return exists
+        ? prev.map(u => u.email.toLowerCase() === normalizedEmail ? refreshedUser : u)
+        : [refreshedUser, ...prev];
+    });
+    setCurrentUser(refreshedUser);
+    setRole(refreshedUser.role);
+    setPlan(refreshedUser.plan);
+    syncBackendEvent('/api/customers/session', {
+      email: refreshedUser.email,
+      referredBy: refreshedUser.referredBy,
+      source: existingUser ? 'signin' : 'signup'
+    });
+  }, [currentUser, referredBy, saasUsers]);
+
   const handleLogout = () => {
     setCurrentUser(null);
     setRole('CUSTOMER');
@@ -1032,7 +1075,7 @@ export default function App() {
     }
   };
 
-  const syncBackendEvent = (url: string, payload: Record<string, unknown>) => {
+  function syncBackendEvent(url: string, payload: Record<string, unknown>) {
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1040,7 +1083,7 @@ export default function App() {
     }).catch((error) => {
       console.warn(`[Backend Sync Warning] ${url}`, error);
     });
-  };
+  }
 
   const handleTestReset = () => {
     setUsageLogs([]);
@@ -1204,6 +1247,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
+      <ClerkSessionBridge onSession={handleClerkSession} />
 
       {/* Dynamic Background Accents */}
       <div className="absolute top-0 right-1/4 w-96 h-96 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -1404,6 +1448,8 @@ export default function App() {
               )}
             </button>
 
+            <ClerkAuthControls />
+
             {/* Logged in session card and logout action */}
             {currentUser && (
               <div className={`flex items-center gap-2 p-1 rounded-xl border transition-all duration-300 ${
@@ -1436,7 +1482,7 @@ export default function App() {
               </div>
             )}
 
-            {!currentUser && (
+            {!currentUser && !isClerkPubliclyConfigured() && (
               <button
                 onClick={() => {
                   navigateToSection('landing');

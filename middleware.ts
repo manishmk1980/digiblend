@@ -14,7 +14,8 @@ const isProtectedRoute = createRouteMatcher([
 const isAdminRoute = createRouteMatcher(['/admin(.*)', '/api/admin(.*)']);
 
 function isClerkConfigured() {
-  return Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
+  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim();
+  return Boolean(publishableKey && /^pk_(test|live)_/.test(publishableKey) && process.env.CLERK_SECRET_KEY);
 }
 
 export default clerkMiddleware(async (auth, request) => {
@@ -45,5 +46,6 @@ export const config = {
   matcher: [
     '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|png|gif|svg|webp|ico|ttf|woff2?|csv|docx?|xlsx?|zip|webmanifest)).*)',
     '/(api|trpc)(.*)',
+    '/__clerk/:path*',
   ],
 };
