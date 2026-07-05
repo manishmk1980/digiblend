@@ -20,7 +20,7 @@ const LOADING_HINTS = [
 
 const INITIAL_MESSAGE: ChatMessage = {
   role: 'assistant',
-  content: 'Hi there! 👋 What can I help you with today?',
+  content: 'Hi there! What can I help you with today?',
 };
 
 const SUGGESTION_CHIPS = [
@@ -135,22 +135,23 @@ export function ChatWidget() {
       )}
 
       {isOpen && (
-        <div className="bg-white w-[min(92vw,400px)] h-[600px] rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden">
+        <div className="bg-white text-gray-900 w-[min(92vw,400px)] h-[600px] rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
           <div className="bg-white border-b border-gray-100 p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="bg-black text-white px-2.5 py-2 rounded-xl text-xs font-bold">DB</div>
               <div>
                 <h3 className="text-sm font-semibold text-gray-900">DigiBlend Assistant</h3>
-                <p className="text-xs text-green-500 flex items-center gap-1">
-                  <span aria-hidden>●</span> Online
+                <p className="text-xs text-green-700 flex items-center gap-1 font-medium">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-600" aria-hidden />
+                  Online
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 text-gray-400">
+            <div className="flex items-center gap-2 text-gray-600">
               <button
                 type="button"
                 onClick={resetConversation}
-                className="p-1 hover:text-gray-600 transition-colors"
+                className="p-1 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
                 aria-label="Reset conversation"
               >
                 <RotateCcw className="h-4 w-4" />
@@ -158,7 +159,7 @@ export function ChatWidget() {
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="p-1 hover:text-gray-600 transition-colors"
+                className="p-1 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
                 aria-label="Close chat"
               >
                 <X className="h-5 w-5" />
@@ -167,7 +168,7 @@ export function ChatWidget() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
-            <div className="text-center text-[11px] text-gray-400 font-medium">Today</div>
+            <div className="text-center text-[11px] text-gray-600 font-medium">Today</div>
 
             {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -218,14 +219,14 @@ export function ChatWidget() {
             )}
           </div>
 
-          <div className="p-3 bg-white border-t border-gray-50 flex flex-wrap gap-2">
+          <div className="p-3 bg-white border-t border-gray-100 flex flex-wrap gap-2">
             {SUGGESTION_CHIPS.map((chip) => (
               <button
                 key={chip}
                 type="button"
                 onClick={() => handleSend(chip)}
                 disabled={isSending}
-                className="bg-blue-50 text-blue-600 text-xs px-3 py-1.5 rounded-full hover:bg-blue-100 transition-all font-medium text-left disabled:opacity-50"
+                className="bg-gray-100 text-gray-900 border border-gray-200 text-xs px-3 py-1.5 rounded-full hover:bg-gray-200 transition-all font-medium text-left disabled:opacity-60 disabled:text-gray-600"
               >
                 {chip}
               </button>
@@ -245,7 +246,8 @@ export function ChatWidget() {
               onChange={(event) => setInputMessage(event.target.value)}
               placeholder="Type your message..."
               disabled={isSending}
-              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 disabled:opacity-60"
+              className="flex-1 border border-gray-300 bg-white text-gray-900 placeholder-gray-500 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-700 focus:ring-1 focus:ring-blue-700 disabled:opacity-70 disabled:text-gray-700 disabled:bg-gray-50 font-normal"
+              style={{ color: '#111827', backgroundColor: '#ffffff' }}
             />
             <VoiceHandler
               onTranscriptChange={setInputMessage}
@@ -256,7 +258,7 @@ export function ChatWidget() {
             <button
               type="submit"
               disabled={!inputMessage.trim() || isSending}
-              className="p-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className="p-2 rounded-xl bg-blue-700 text-white hover:bg-blue-800 disabled:opacity-60 disabled:bg-gray-500 transition-colors"
               aria-label="Send message"
             >
               <Send className="h-4 w-4" />

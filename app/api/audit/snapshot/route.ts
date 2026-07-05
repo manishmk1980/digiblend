@@ -178,7 +178,7 @@ async function getHomepageEvidence(websiteUrl: string) {
   const normalized = normalizeUrl(websiteUrl);
   const response = await fetch(normalized, {
     headers: {
-      'User-Agent': 'DigiBlendAuditBot/1.0 (+https://digiblend.co.in)',
+      'User-Agent': 'DigiBlendAuditBot/1.0 (+https://digiblend.in)',
       Accept: 'text/html,application/xhtml+xml',
     },
     signal: AbortSignal.timeout(7000),

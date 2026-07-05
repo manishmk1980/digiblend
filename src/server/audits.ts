@@ -1,5 +1,5 @@
-import type { ResultSetHeader } from 'mysql2/promise';
-import { isDatabaseConfigured, query } from './db';
+import type { Prisma } from '@prisma/client';
+import { isPrismaConfigured, prisma } from './prisma';
 
 export type AuditStatus = 'Processing' | 'Waiting For Approval' | 'Approved' | 'Published' | 'Failed';
 
@@ -10,6 +10,14 @@ export type CreateAuditInput = {
   snapshotPayload?: unknown;
   readinessScore?: number | null;
 };
+
+const auditStatusMap = {
+  Processing: 'Processing',
+  'Waiting For Approval': 'Waiting_For_Approval',
+  Approved: 'Approved',
+  Published: 'Published',
+  Failed: 'Failed',
+} as const;
 
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
@@ -31,42 +39,38 @@ export function inferCompanyName(companyUrl: string) {
 }
 
 export async function createAuditRecord(input: CreateAuditInput) {
-  if (!isDatabaseConfigured()) {
+  if (!isPrismaConfigured()) {
     return null;
   }
 
   const normalizedCompanyUrl = normalizeUrl(input.companyUrl);
   const inferredCompanyName = inferCompanyName(normalizedCompanyUrl);
-  const snapshotPayload = input.snapshotPayload ? JSON.stringify(input.snapshotPayload) : null;
+  const snapshotPayload = input.snapshotPayload ? (input.snapshotPayload as Prisma.InputJsonValue) : undefined;
   const readinessScore = typeof input.readinessScore === 'number' ? input.readinessScore : null;
 
-  const auditInsertResult = await query<ResultSetHeader>(
-    `INSERT INTO audits (company_name, company_url, operational_focus, status, readiness_score, snapshot_payload)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [
-      inferredCompanyName,
-      normalizedCompanyUrl,
-      input.operationalFocus,
-      input.status || 'Processing',
+  const audit = await prisma.audit.create({
+    data: {
+      companyName: inferredCompanyName,
+      companyUrl: normalizedCompanyUrl,
+      operationalFocus: input.operationalFocus,
+      status: auditStatusMap[input.status || 'Processing'],
       readinessScore,
       snapshotPayload,
-    ],
-  );
+      logs: {
+        create: {
+          actionPerformed: 'INITIALIZE_SNAPSHOT_SCAN',
+          rawInputPayload: {
+            company_url: normalizedCompanyUrl,
+            operational_focus: input.operationalFocus,
+            readiness_score: readinessScore,
+          },
+        },
+      },
+    },
+    select: {
+      id: true,
+    },
+  });
 
-  const insertedAuditId = auditInsertResult.insertId;
-
-  await query<ResultSetHeader>(
-    `INSERT INTO audit_logs (audit_id, action_performed, raw_input_payload)
-     VALUES (?, 'INITIALIZE_SNAPSHOT_SCAN', ?)`,
-    [
-      insertedAuditId,
-      JSON.stringify({
-        company_url: normalizedCompanyUrl,
-        operational_focus: input.operationalFocus,
-        readiness_score: readinessScore,
-      }),
-    ],
-  );
-
-  return insertedAuditId;
+  return audit.id.toString();
 }

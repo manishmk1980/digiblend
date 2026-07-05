@@ -66,6 +66,16 @@ import MetricsOverview from './components/MetricsOverview';
 import CustomerLandingPage from './components/CustomerLandingPage';
 import { ChatWidget } from './components/chat/ChatWidget';
 
+type BackendOverview = {
+  status: 'healthy' | 'not_configured' | 'error';
+  tenants?: number;
+  users?: number;
+  activeSubscriptions?: number;
+  usageEvents?: number;
+  adminActions?: number;
+  audits?: number;
+};
+
 export default function App() {
   // Active User session state
   const [currentUser, setCurrentUser] = useState<SaaSUser | null>(() => {
@@ -199,6 +209,7 @@ export default function App() {
 
   // Admin section view states
   const [adminActiveTab, setAdminActiveTab] = useState<'dashboard' | 'users' | 'subscriptions' | 'usage' | 'actions'>('dashboard');
+  const [backendOverview, setBackendOverview] = useState<BackendOverview | null>(null);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userSortField, setUserSortField] = useState<'email' | 'plan' | 'lastActive'>('lastActive');
   const [userSortOrder, setUserSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -402,6 +413,28 @@ export default function App() {
       localStorage.removeItem('digiblend_current_user');
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (currentPath !== '/admin' || role !== 'ADMIN' || adminActiveTab !== 'dashboard') return;
+
+    let cancelled = false;
+    fetch('/api/admin/overview')
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!cancelled) {
+          setBackendOverview(response.ok ? payload : { status: payload.status || 'error' });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBackendOverview({ status: 'error' });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPath, role, adminActiveTab, saasUsers.length, saasSubscriptions.length, usageLogs.length, saasAdminActions.length]);
 
   // Catch ref parameter from URL
   useEffect(() => {
@@ -624,6 +657,19 @@ export default function App() {
         usedAt: new Date().toISOString(),
       };
       setUsageLogs(prev => [newLog, ...prev]);
+      if (currentUser) {
+        syncBackendEvent('/api/usage/events', {
+          email: currentUser.email,
+          toolSlug: selectedTool.slug,
+          toolName: selectedTool.name,
+          eventType: 'COPY_GENERATION',
+          units: 1,
+          metadata: {
+            logId: newLog.id,
+            generatedAt: newLog.usedAt
+          }
+        });
+      }
 
       // Synchronize write usage count in master directory database
       if (currentUser) {
@@ -682,6 +728,16 @@ export default function App() {
         expiresAt: new Date(Date.now() + 30*24*60*60*1000).toISOString()
       };
       setSaasSubscriptions(prev => [newSub, ...prev]);
+      syncBackendEvent('/api/subscriptions/pro', {
+        email,
+        providerRef: subId,
+        amountCents: 49900,
+        currency: 'INR',
+        metadata: {
+          source: 'simulated_razorpay_modal',
+          localSubscriptionId: newSub.id
+        }
+      });
 
       // If active user is current, update session too
       if (currentUser) {
@@ -731,6 +787,11 @@ export default function App() {
       setAuthEmail('');
       setAuthPassword('');
       setAuthReferral('');
+      syncBackendEvent('/api/customers/session', {
+        email: newUser.email,
+        referredBy: newUser.referredBy,
+        source: 'signup'
+      });
     } else {
       // Sign In
       const found = saasUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
@@ -742,6 +803,11 @@ export default function App() {
         setAuthSuccess(`Welcome back, ${found.email}!`);
         setAuthEmail('');
         setAuthPassword('');
+        syncBackendEvent('/api/customers/session', {
+          email: found.email,
+          referredBy: found.referredBy,
+          source: 'signin'
+        });
       } else {
         setAuthError('Email not found in our directory database. Please Register an account first, or log in with alex.hacker@buildinpublic.com');
       }
@@ -874,6 +940,17 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
     setSaasAdminActions([newAction, ...saasAdminActions]);
+    syncBackendEvent('/api/admin/actions', {
+      adminEmail: newAction.adminEmail,
+      targetEmail: newAction.targetEmail,
+      action: newAction.action,
+      notes: newAction.notes,
+      metadata: {
+        localActionId: newAction.id,
+        overridePlan: overridePlanValue,
+        overrideRole: overrideRoleValue
+      }
+    });
     
     // If the admin user edited their OWN account, let's sync the active plan!
     if (selectedAdminUser.email === 'ui.manishmishra@gmail.com') {
@@ -888,7 +965,7 @@ export default function App() {
   const handleShareResult = () => {
     if (!generationResult) return;
 
-    let summaryText = `DigiBlend.co.in AI Copywriting Tool: ${selectedTool.name}\n`;
+    let summaryText = `DigiBlend AI Copywriting Tool: ${selectedTool.name}\n`;
     summaryText += `-----------------------------------------------\n\n`;
 
     if (selectedTool.slug === 'meta-tag-generator') {
@@ -934,7 +1011,7 @@ export default function App() {
     }
 
     summaryText += `\n-----------------------------------------------\n`;
-    summaryText += `Drafted instantly with DigiBlend (https://digiblend.co.in)`;
+    summaryText += `Drafted instantly with DigiBlend (https://digiblend.in)`;
 
     navigator.clipboard.writeText(summaryText);
     setShareSuccess(true);
@@ -953,6 +1030,16 @@ export default function App() {
         }
       }
     }
+  };
+
+  const syncBackendEvent = (url: string, payload: Record<string, unknown>) => {
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch((error) => {
+      console.warn(`[Backend Sync Warning] ${url}`, error);
+    });
   };
 
   const handleTestReset = () => {
@@ -1021,7 +1108,7 @@ export default function App() {
                   <Shield className="w-8 h-8" />
                 </div>
                 <h1 className="text-2xl font-bold tracking-tight text-white">Root Administrator Login</h1>
-                <p className="text-xs text-slate-400 font-mono">digiblend.co.in/admin access portal</p>
+                <p className="text-xs text-slate-400 font-mono">Super admin access portal</p>
               </div>
 
               {authError && (
@@ -1133,7 +1220,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-display font-bold text-white leading-none tracking-tight text-lg">
-                  DigiBlend<span className="text-rose-400">.in</span>
+                  DigiBlend
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-md font-black uppercase tracking-wider bg-rose-500/10 text-rose-300 border border-rose-500/25">
                   Super Admin
@@ -1210,7 +1297,7 @@ export default function App() {
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-display font-bold text-slate-900 dark:text-slate-50 leading-none tracking-tight text-lg">
-                  DigiBlend<span className={`text-transparent bg-clip-text bg-gradient-to-r ${currentAccent.fromTo}`}>.in</span>
+                  DigiBlend
                 </span>
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-semibold ${plan === 'PRO' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
                   {plan}
@@ -2814,10 +2901,10 @@ export default function App() {
                       <span className="text-[9px] uppercase font-bold text-slate-400 font-mono block mb-1">Your Share Link</span>
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-[10px] text-indigo-500 dark:text-indigo-400 truncate font-mono">
-                          https://digiblend.co.in/?ref=ui_manish
+                          https://digiblend.in/?ref=ui_manish
                         </span>
                         <button
-                          onClick={() => copyToClipboard("https://digiblend.co.in/?ref=ui_manish", "referral_link")}
+                          onClick={() => copyToClipboard("https://digiblend.in/?ref=ui_manish", "referral_link")}
                           className="text-slate-400 hover:text-slate-900 dark:hover:text-white shrink-0 p-1"
                           title="Copy Link"
                         >
@@ -3060,6 +3147,52 @@ export default function App() {
                   saasSubscriptions={saasSubscriptions} 
                   usageLogs={usageLogs} 
                 />
+
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-900 p-5 shadow-sm space-y-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                        <Database className="w-3.5 h-3.5" />
+                        Backend Allocation Status
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        Frontend activity is mirrored into tenant, subscription, usage, and admin audit records.
+                      </h3>
+                    </div>
+                    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-bold ${
+                      backendOverview?.status === 'healthy'
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : backendOverview?.status === 'not_configured'
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                          : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                    }`}>
+                      <span className="h-2 w-2 rounded-full bg-current" />
+                      {backendOverview?.status === 'healthy'
+                        ? 'Connected'
+                        : backendOverview?.status === 'not_configured'
+                          ? 'DB env pending locally'
+                          : 'Needs attention'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                    {[
+                      ['Tenants', backendOverview?.tenants],
+                      ['Users', backendOverview?.users],
+                      ['Subscriptions', backendOverview?.activeSubscriptions],
+                      ['Usage Events', backendOverview?.usageEvents],
+                      ['Admin Actions', backendOverview?.adminActions],
+                      ['Audits', backendOverview?.audits],
+                    ].map(([label, value]) => (
+                      <div key={String(label)} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/70 p-3">
+                        <p className="text-[10px] uppercase tracking-wider font-mono text-slate-400">{label}</p>
+                        <p className="mt-1 text-lg font-black text-slate-900 dark:text-white font-mono">
+                          {typeof value === 'number' ? value : '--'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 {/* KPI Cards Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

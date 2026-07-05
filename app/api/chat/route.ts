@@ -27,7 +27,21 @@ type OpenRouterModelsCache = {
 
 let freeOpenRouterModelsCache: OpenRouterModelsCache | null = null;
 
-const SUPPORT_SYSTEM_PROMPT = `You are Blend, the friendly and knowledgeable customer support assistant for DigiBlend (digiblend.in), a toolkit of AI-powered tools for freelancers, indie marketers, and small business owners.
+function getSupportEscalationBlock() {
+  const email = process.env.SUPPORT_EMAIL || 'support@digiblend.in';
+  const phone = process.env.SUPPORT_PHONE?.trim();
+  const callUrl = process.env.SUPPORT_CALL_URL || 'https://digiblend.in/contact';
+  return [
+    `Email: ${email}`,
+    phone ? `Phone/WhatsApp: ${phone}` : null,
+    `Book a call: ${callUrl}`,
+  ].filter(Boolean).join('\n');
+}
+
+function getSupportSystemPrompt() {
+  const supportEscalation = getSupportEscalationBlock();
+
+  return `You are Blend, the friendly and knowledgeable customer support assistant for DigiBlend (digiblend.in), a toolkit of AI-powered tools for freelancers, indie marketers, and small business owners.
 
 Personality:
 - Warm, helpful, professional, concise, and honest.
@@ -46,9 +60,7 @@ Escalation:
 For unsupported questions or human help, say:
 "For this one, it's best to connect with our team directly. You can reach us at:
 
-Email: support@digiblend.in
-Phone/WhatsApp: +91-XXXXXXXXXX
-Book a call: digiblend.in/contact
+${supportEscalation}
 
 We typically respond within 24 hours on business days."
 
@@ -73,6 +85,7 @@ Knowledge base:
 - DigiBlend does not sell user data.
 - Uploaded documents are used only to personalise the user's own outputs. They are not shared with other users or used to train AI models.
 - Privacy policy: digiblend.in/privacy`;
+}
 
 function isZeroPrice(value: string | undefined) {
   if (!value) return false;
@@ -186,7 +199,7 @@ export async function POST(request: Request) {
     }));
 
     const openRouterMessages = [
-      { role: 'system', content: SUPPORT_SYSTEM_PROMPT },
+      { role: 'system', content: getSupportSystemPrompt() },
       ...recentMessages,
     ];
 

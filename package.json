@@ -10,10 +10,17 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "db:tunnel": "ssh -N -L 3307:127.0.0.1:3306 primewayz-vps",
-    "db:check": "node scripts/check-db.mjs"
+    "db:check": "node scripts/check-db.mjs",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "@clerk/nextjs": "7.5.12",
     "@google/genai": "^2.4.0",
+    "@langchain/core": "1.2.1",
+    "@langchain/langgraph": "1.4.7",
+    "@prisma/client": "6.19.1",
     "@tailwindcss/postcss": "^4.1.14",
     "dotenv": "17.4.2",
     "lucide-react": "^0.546.0",
@@ -28,6 +35,7 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "autoprefixer": "^10.4.21",
+    "prisma": "6.19.1",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2"
   }

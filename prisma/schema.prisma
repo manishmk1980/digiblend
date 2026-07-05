@@ -1,0 +1,400 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Audit {
+  id               BigInt                      @id @default(autoincrement()) @db.UnsignedBigInt
+  companyName      String                      @map("company_name") @db.VarChar(255)
+  companyUrl       String                      @map("company_url") @db.VarChar(2048)
+  operationalFocus String                      @map("operational_focus") @db.VarChar(120)
+  status           AuditStatus                 @default(Processing)
+  readinessScore   Int?                        @map("readiness_score") @db.UnsignedTinyInt
+  snapshotPayload  Json?                       @map("snapshot_payload")
+  createdAt        DateTime                    @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt        DateTime                    @updatedAt @map("updated_at") @db.Timestamp(0)
+  logs             AuditLog[]
+  onboarding       AuditOnboarding?
+  agentRuns        AgentRun[]
+  syncRequests     ImplementationSyncRequest[]
+
+  @@index([status, createdAt], map: "idx_audits_status_created_at")
+  @@index([companyUrl(length: 191)], map: "idx_audits_company_url")
+  @@map("audits")
+}
+
+model AuditLog {
+  id              BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  auditId         BigInt   @map("audit_id") @db.UnsignedBigInt
+  actionPerformed String   @map("action_performed") @db.VarChar(120)
+  rawInputPayload Json?    @map("raw_input_payload")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  audit           Audit    @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  @@index([auditId, createdAt], map: "idx_audit_logs_audit_id_created_at")
+  @@map("audit_logs")
+}
+
+model AuditOnboarding {
+  id               BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  auditId          BigInt           @unique @map("audit_id") @db.UnsignedBigInt
+  contactEmail     String?          @map("contact_email") @db.VarChar(255)
+  operationalNotes String?          @map("operational_notes") @db.Text
+  sampleFileName   String?          @map("sample_file_name") @db.VarChar(255)
+  status           OnboardingStatus @default(Draft)
+  submittedAt      DateTime?        @map("submitted_at") @db.Timestamp(0)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamp(0)
+  audit            Audit            @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  @@map("audit_onboarding")
+}
+
+model AgentRun {
+  id            BigInt         @id @default(autoincrement()) @db.UnsignedBigInt
+  auditId       BigInt?        @map("audit_id") @db.UnsignedBigInt
+  userEmail     String?        @map("user_email") @db.VarChar(255)
+  toolSlug      String         @map("tool_slug") @db.VarChar(120)
+  workflowType  AgentWorkflow  @map("workflow_type")
+  status        AgentRunStatus @default(Queued)
+  userGoal      String         @map("user_goal") @db.Text
+  statePayload  Json?          @map("state_payload")
+  finalResponse Json?          @map("final_response")
+  reviewScore   Int?           @map("review_score") @db.UnsignedTinyInt
+  errorMessage  String?        @map("error_message") @db.Text
+  startedAt     DateTime?      @map("started_at") @db.Timestamp(0)
+  completedAt   DateTime?      @map("completed_at") @db.Timestamp(0)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamp(0)
+  audit         Audit?         @relation(fields: [auditId], references: [id], onDelete: SetNull)
+  messages      AgentMessage[]
+
+  @@index([auditId, createdAt], map: "idx_agent_runs_audit_id_created_at")
+  @@index([workflowType, status, createdAt], map: "idx_agent_runs_workflow_status_created")
+  @@map("agent_runs")
+}
+
+model AgentMessage {
+  id        BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  runId     BigInt           @map("run_id") @db.UnsignedBigInt
+  agentName AgentName        @map("agent_name")
+  role      AgentMessageRole
+  content   String           @db.LongText
+  metadata  Json?
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamp(0)
+  run       AgentRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt], map: "idx_agent_messages_run_id_created_at")
+  @@map("agent_messages")
+}
+
+model AgentMemory {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  scope     String   @db.VarChar(120)
+  scopeKey  String   @map("scope_key") @db.VarChar(255)
+  key       String   @db.VarChar(255)
+  value     Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp(0)
+
+  @@unique([scope, scopeKey, key], map: "uniq_agent_memory_scope_key")
+  @@map("agent_memory")
+}
+
+model ImplementationSyncRequest {
+  id             BigInt                   @id @default(autoincrement()) @db.UnsignedBigInt
+  auditId        BigInt                   @map("audit_id") @db.UnsignedBigInt
+  contactEmail   String?                  @map("contact_email") @db.VarChar(255)
+  requestedScope String?                  @map("requested_scope") @db.Text
+  status         ImplementationSyncStatus @default(Requested)
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamp(0)
+  audit          Audit                    @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt], map: "idx_implementation_sync_status_created")
+  @@map("implementation_sync_requests")
+}
+
+model Tenant {
+  id            BigInt                 @id @default(autoincrement()) @db.UnsignedBigInt
+  name          String                 @db.VarChar(255)
+  primaryDomain String?                @map("primary_domain") @db.VarChar(255)
+  status        TenantStatus           @default(Active)
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamp(0)
+  users         CustomerUser[]
+  subscriptions CustomerSubscription[]
+  usageEvents   UsageEvent[]
+  adminActions  AdminAction[]
+
+  @@index([status, createdAt], map: "idx_tenants_status_created_at")
+  @@map("tenants")
+}
+
+model CustomerUser {
+  id           BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId     BigInt        @map("tenant_id") @db.UnsignedBigInt
+  email        String        @unique @db.VarChar(255)
+  role         CustomerRole  @default(Customer)
+  referredBy   String?       @map("referred_by") @db.VarChar(255)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamp(0)
+  lastActive   DateTime      @default(now()) @map("last_active") @db.Timestamp(0)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usageEvents  UsageEvent[]
+  adminActions AdminAction[] @relation("AdminActionTarget")
+
+  @@index([tenantId, lastActive], map: "idx_customer_users_tenant_last_active")
+  @@map("customer_users")
+}
+
+model CustomerSubscription {
+  id              BigInt             @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId        BigInt             @map("tenant_id") @db.UnsignedBigInt
+  plan            SubscriptionPlanDb @default(Free)
+  status          SubscriptionStatus @default(Active)
+  paymentProvider String?            @map("payment_provider") @db.VarChar(80)
+  providerRef     String?            @map("provider_ref") @db.VarChar(160)
+  amountCents     Int?               @map("amount_cents") @db.UnsignedInt
+  currency        String             @default("INR") @db.VarChar(12)
+  startedAt       DateTime           @default(now()) @map("started_at") @db.Timestamp(0)
+  expiresAt       DateTime?          @map("expires_at") @db.Timestamp(0)
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamp(0)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamp(0)
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt], map: "idx_customer_subscriptions_tenant_status")
+  @@map("customer_subscriptions")
+}
+
+model UsageEvent {
+  id        BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId  BigInt        @map("tenant_id") @db.UnsignedBigInt
+  userId    BigInt?       @map("user_id") @db.UnsignedBigInt
+  toolSlug  String        @map("tool_slug") @db.VarChar(120)
+  toolName  String?       @map("tool_name") @db.VarChar(255)
+  status    UsageStatus   @default(Success)
+  metadata  Json?
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamp(0)
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      CustomerUser? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt], map: "idx_usage_events_tenant_created_at")
+  @@index([toolSlug, createdAt], map: "idx_usage_events_tool_created_at")
+  @@map("usage_events")
+}
+
+model User {
+  id              Int                 @id @default(autoincrement())
+  clerkUserId     String              @unique @map("clerk_user_id") @db.VarChar(255)
+  email           String              @db.VarChar(255)
+  role            Role                @default(CUSTOMER)
+  plan            Plan                @default(FREE)
+  creditBalance   Int                 @default(0) @map("credit_balance")
+  referralCode    String?             @unique @map("referral_code") @db.VarChar(64)
+  referredBy      String?             @map("referred_by") @db.VarChar(64)
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamp(0)
+  usageLogs       UsageLog[]
+  subscriptions   Subscription[]
+  creditTxs       CreditTransaction[]
+  knowledgeDocs   KnowledgeDocument[]
+  adminActions    AdminAction[]       @relation("AdminActor")
+  targetedActions AdminAction[]       @relation("AdminActionSaasTarget")
+
+  @@index([email], map: "idx_users_email")
+  @@index([plan, createdAt], map: "idx_users_plan_created_at")
+  @@map("users")
+}
+
+model Subscription {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  razorpaySubId String?   @unique @map("razorpay_sub_id") @db.VarChar(255)
+  status        SubStatus @default(ACTIVE)
+  startedAt     DateTime  @default(now()) @map("started_at") @db.Timestamp(0)
+  expiresAt     DateTime? @map("expires_at") @db.Timestamp(0)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status], map: "idx_subscriptions_user_status")
+  @@map("subscriptions")
+}
+
+model UsageLog {
+  id       Int      @id @default(autoincrement())
+  userId   Int      @map("user_id")
+  toolSlug String   @map("tool_slug") @db.VarChar(120)
+  usedAt   DateTime @default(now()) @map("used_at") @db.Timestamp(0)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, toolSlug, usedAt], map: "idx_usage_logs_user_tool_used_at")
+  @@map("usage_logs")
+}
+
+model CreditPack {
+  id       Int     @id @default(autoincrement())
+  name     String  @db.VarChar(120)
+  credits  Int
+  priceInr Int     @map("price_inr")
+  active   Boolean @default(true)
+
+  @@map("credit_packs")
+}
+
+model CreditTransaction {
+  id                Int          @id @default(autoincrement())
+  userId            Int          @map("user_id")
+  type              CreditTxType
+  amount            Int
+  toolSlug          String?      @map("tool_slug") @db.VarChar(120)
+  razorpayPaymentId String?      @map("razorpay_payment_id") @db.VarChar(255)
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamp(0)
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt], map: "idx_credit_transactions_user_created_at")
+  @@map("credit_transactions")
+}
+
+model KnowledgeDocument {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  title     String   @db.VarChar(255)
+  content   String   @db.Text
+  fileType  String   @map("file_type") @db.VarChar(40)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt], map: "idx_knowledge_documents_user_created_at")
+  @@map("knowledge_documents")
+}
+
+model AdminAction {
+  id               BigInt        @id @default(autoincrement()) @db.UnsignedBigInt
+  tenantId         BigInt?       @map("tenant_id") @db.UnsignedBigInt
+  targetUserId     BigInt?       @map("target_user_id") @db.UnsignedBigInt
+  adminId          Int?          @map("admin_id")
+  targetSaasUserId Int?          @map("saas_target_user_id")
+  adminEmail       String        @map("admin_email") @db.VarChar(255)
+  action           String        @db.VarChar(120)
+  notes            String?       @db.Text
+  metadata         Json?
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamp(0)
+  tenant           Tenant?       @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  targetUser       CustomerUser? @relation("AdminActionTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+  admin            User?         @relation("AdminActor", fields: [adminId], references: [id], onDelete: SetNull)
+  targetSaasUser   User?         @relation("AdminActionSaasTarget", fields: [targetSaasUserId], references: [id], onDelete: SetNull)
+
+  @@index([adminEmail, createdAt], map: "idx_admin_actions_admin_created_at")
+  @@index([tenantId, createdAt], map: "idx_admin_actions_tenant_created_at")
+  @@index([adminId, createdAt], map: "idx_admin_actions_admin_id_created_at")
+  @@index([targetSaasUserId, createdAt], map: "idx_admin_actions_saas_target_created_at")
+  @@map("admin_actions")
+}
+
+enum AuditStatus {
+  Processing           @map("Processing")
+  Waiting_For_Approval @map("Waiting For Approval")
+  Approved             @map("Approved")
+  Published            @map("Published")
+  Failed               @map("Failed")
+}
+
+enum OnboardingStatus {
+  Draft
+  Submitted
+  Locked
+}
+
+enum AgentWorkflow {
+  AuditSnapshot
+  DeepAudit
+  CopyGeneration
+  SupportChat
+  ImplementationPlan
+}
+
+enum AgentRunStatus {
+  Queued
+  Running
+  ReviewRequired
+  Completed
+  Failed
+}
+
+enum AgentName {
+  Orchestrator
+  Planner
+  Researcher
+  Writer
+  Reviewer
+  Support
+  Admin
+}
+
+enum AgentMessageRole {
+  system
+  user
+  assistant
+  tool
+}
+
+enum ImplementationSyncStatus {
+  Requested
+  Scheduled
+  Completed
+  Cancelled
+}
+
+enum TenantStatus {
+  Active
+  Suspended
+  Cancelled
+}
+
+enum CustomerRole {
+  Customer
+  TenantAdmin
+}
+
+enum SubscriptionPlanDb {
+  Free
+  Pro
+  Enterprise
+}
+
+enum SubscriptionStatus {
+  Active
+  Cancelled
+  Expired
+  PastDue
+}
+
+enum UsageStatus {
+  Success
+  Failed
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum SubStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+enum CreditTxType {
+  PURCHASE
+  SPEND
+  REFERRAL_BONUS
+  ADMIN_GRANT
+}
