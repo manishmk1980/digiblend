@@ -55,9 +55,6 @@ import {
   LogIn,
   LogOut,
   Key,
-  MessageCircle,
-  Send,
-  Bot,
   Home,
   Gem,
   User,
@@ -67,20 +64,7 @@ import {
 import { TOOLS, ToolDefinition, SubscriptionPlan, UsageLog, Role, SubStatus, SaaSUser, SaaSAdminAction, SaaSSubscription } from './types';
 import MetricsOverview from './components/MetricsOverview';
 import CustomerLandingPage from './components/CustomerLandingPage';
-
-type SupportChatMessage = {
-  role: 'assistant' | 'user';
-  content: string;
-  kind?: 'normal' | 'follow-up';
-};
-
-const SUPPORT_CHAT_IDLE_MS = 90_000;
-const SUPPORT_CHAT_HINTS = [
-  'Checking the DigiBlend knowledge base...',
-  'Looking at plans, credits, and billing rules...',
-  'Matching your question to support policies...',
-  'Preparing a concise answer...',
-];
+import { ChatWidget } from './components/chat/ChatWidget';
 
 export default function App() {
   // Active User session state
@@ -336,60 +320,9 @@ export default function App() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
-  const [showSupportChat, setShowSupportChat] = useState(false);
-  const [supportChatInput, setSupportChatInput] = useState('');
-  const [isSupportChatSending, setIsSupportChatSending] = useState(false);
-  const [supportChatHintIndex, setSupportChatHintIndex] = useState(0);
-  const [lastSupportFollowUpFor, setLastSupportFollowUpFor] = useState<number | null>(null);
-  const [supportChatMessages, setSupportChatMessages] = useState<SupportChatMessage[]>([
-    {
-      role: 'assistant',
-      content: 'Hi, I am Blend. Ask me about DigiBlend tools, plans, billing, credits, referrals, or account help.',
-    },
-  ]);
-
   useEffect(() => {
     setIsMac(/Mac|iPod|iPhone|iPad/.test(navigator.userAgent));
   }, []);
-
-  useEffect(() => {
-    if (!isSupportChatSending) return;
-    const timer = setInterval(() => {
-      setSupportChatHintIndex((current) => (current + 1) % SUPPORT_CHAT_HINTS.length);
-    }, 1400);
-    return () => clearInterval(timer);
-  }, [isSupportChatSending]);
-
-  useEffect(() => {
-    if (!showSupportChat || isSupportChatSending) return;
-    const lastMessage = supportChatMessages[supportChatMessages.length - 1];
-    const lastUserIndex = [...supportChatMessages].map((message) => message.role).lastIndexOf('user');
-
-    if (!lastMessage || lastMessage.role !== 'assistant' || lastMessage.kind === 'follow-up' || lastUserIndex === -1) {
-      return;
-    }
-
-    if (lastSupportFollowUpFor === lastUserIndex) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      const lastUserMessage = supportChatMessages[lastUserIndex]?.content || 'your DigiBlend question';
-      const topic = lastUserMessage.length > 82 ? `${lastUserMessage.slice(0, 79)}...` : lastUserMessage;
-
-      setSupportChatMessages((messages) => [
-        ...messages,
-        {
-          role: 'assistant',
-          kind: 'follow-up',
-          content: `Quick reminder: we were discussing "${topic}".\n\nIs there anything else I can help you with today? If you would rather speak with the team, you can book a call appointment.`,
-        },
-      ]);
-      setLastSupportFollowUpFor(lastUserIndex);
-    }, SUPPORT_CHAT_IDLE_MS);
-
-    return () => clearTimeout(timer);
-  }, [showSupportChat, isSupportChatSending, supportChatMessages, lastSupportFollowUpFor]);
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -842,52 +775,6 @@ export default function App() {
       setActiveSection('admin');
     } else {
       setAuthError('Access Denied: Invalid root administrator credentials.');
-    }
-  };
-
-  const handleSupportChatSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const message = supportChatInput.trim();
-    if (!message || isSupportChatSending) return;
-
-    const nextMessages: SupportChatMessage[] = [
-      ...supportChatMessages,
-      { role: 'user', content: message },
-    ];
-
-    setSupportChatMessages(nextMessages);
-    setLastSupportFollowUpFor(null);
-    setSupportChatInput('');
-    setIsSupportChatSending(true);
-    setSupportChatHintIndex(0);
-
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: nextMessages }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Support chat failed');
-      }
-
-      setSupportChatMessages([
-        ...nextMessages,
-        { role: 'assistant', content: data.reply || 'I could not generate a reply just now.' },
-      ]);
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : 'Support chat failed';
-      setSupportChatMessages([
-        ...nextMessages,
-        {
-          role: 'assistant',
-          content: `I could not connect to support chat right now. ${messageText}`,
-        },
-      ]);
-    } finally {
-      setIsSupportChatSending(false);
     }
   };
 
@@ -3963,132 +3850,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Floating customer support chat */}
-      <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
-        {showSupportChat && (
-          <div className="w-[min(92vw,400px)] h-[560px] bg-white/95 dark:bg-slate-950/95 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col backdrop-blur-xl">
-            <div className={`px-4 py-3 bg-gradient-to-r ${currentAccent.fromTo} text-white flex items-center justify-between`}>
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shadow-inner">
-                  <Bot className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold leading-tight">Blend Support</p>
-                  <p className="text-[10px] text-white/75 font-mono">Online • plans, credits, billing</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowSupportChat(false)}
-                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
-                aria-label="Close support chat"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80">
-              <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Answers from the DigiBlend support knowledge base</span>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900">
-              {supportChatMessages.map((message, index) => (
-                <div
-                  key={`${message.role}-${index}`}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[84%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed whitespace-pre-wrap shadow-sm ${
-                      message.role === 'user'
-                        ? `${currentAccent.bg} text-white`
-                        : message.kind === 'follow-up'
-                          ? 'bg-indigo-50 dark:bg-indigo-500/10 text-slate-700 dark:text-slate-100 border border-indigo-200 dark:border-indigo-500/20'
-                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800'
-                    }`}
-                  >
-                    {message.content}
-                    {message.kind === 'follow-up' && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <a
-                          href="https://digiblend.in/contact"
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-white ${currentAccent.bg}`}
-                        >
-                          Book a call
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                        <a
-                          href="mailto:support@digiblend.in"
-                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800"
-                        >
-                          Email support
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {isSupportChatSending && (
-                <div className="flex justify-start">
-                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs text-slate-500 shadow-sm space-y-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse [animation-delay:120ms]" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-pulse [animation-delay:240ms]" />
-                    </div>
-                    <p>{SUPPORT_CHAT_HINTS[supportChatHintIndex]}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <form onSubmit={handleSupportChatSubmit} className="p-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {['Free vs Pro', 'Credits', 'Refunds'].map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    onClick={() => setSupportChatInput(suggestion)}
-                    className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-900 text-[10px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  value={supportChatInput}
-                  onChange={(e) => setSupportChatInput(e.target.value)}
-                  placeholder="Ask about plans, credits, billing..."
-                  className="flex-1 h-10 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
-                />
-                <button
-                  type="submit"
-                  disabled={!supportChatInput.trim() || isSupportChatSending}
-                  className={`w-10 h-10 rounded-xl ${currentAccent.bg} hover:opacity-90 disabled:opacity-50 text-white flex items-center justify-center transition-opacity`}
-                  aria-label="Send support chat message"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => setShowSupportChat((prev) => !prev)}
-          className={`h-12 px-4 rounded-full bg-gradient-to-r ${currentAccent.fromTo} text-white shadow-xl shadow-indigo-500/20 flex items-center gap-2 text-sm font-bold hover:opacity-95 transition-all`}
-          aria-label="Open support chat"
-        >
-          <MessageCircle className="w-5 h-5" />
-          <span className="hidden sm:inline">Chat</span>
-        </button>
-      </div>
+      {!isAdminWorkspace && <ChatWidget />}
 
       {/* Footer copyright notice block */}
       <footer className="py-6 border-t border-slate-200 dark:border-slate-900 text-center text-xs text-slate-400 dark:text-slate-600 bg-white dark:bg-slate-950 transition-all duration-300">
