@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Globe,
   Users,
@@ -67,6 +67,7 @@ import CustomerLandingPage from './components/CustomerLandingPage';
 import { ChatWidget } from './components/chat/ChatWidget';
 import { ClerkAuthControls } from './components/auth/ClerkAuthControls';
 import { ClerkSessionBridge } from './components/auth/ClerkSessionBridge';
+import { ClerkAuthPromptBridge, type ClerkAuthPromptApi } from './components/auth/ClerkAuthPromptBridge';
 import { isClerkPubliclyConfigured } from './lib/clerk-config';
 
 type BackendOverview = {
@@ -319,6 +320,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationResult, setGenerationResult] = useState<any>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const clerkAuthPromptRef = useRef<ClerkAuthPromptApi | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [shareSuccess, setShareSuccess] = useState(false);
   const [generationTimeMs, setGenerationTimeMs] = useState<number | null>(null);
@@ -606,6 +608,23 @@ export default function App() {
   const todayUsage = getTodayUsageCount();
   const limitReached = plan === 'FREE' && todayUsage >= 3;
 
+  const handleClerkAuthPromptReady = useCallback((api: ClerkAuthPromptApi) => {
+    clerkAuthPromptRef.current = api;
+  }, []);
+
+  const promptGuestSignUp = useCallback(() => {
+    if (isClerkPubliclyConfigured() && clerkAuthPromptRef.current) {
+      return clerkAuthPromptRef.current.ensureAuthenticated();
+    }
+
+    navigateToSection('landing');
+    setTimeout(() => {
+      const registerSection = document.getElementById('register');
+      registerSection?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+    return false;
+  }, []);
+
   // Submission handler
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -614,10 +633,16 @@ export default function App() {
     setGenerationResult(null);
     setGenerationTimeMs(null);
 
-    // Guest check
     if (!currentUser) {
-      setApiError('Account Required: Please register or sign in (or click on a guest test seat in the home screen) to run live Gemini AI copywriting generations.');
-      return;
+      if (isClerkPubliclyConfigured()) {
+        const allowed = clerkAuthPromptRef.current?.ensureAuthenticated() ?? false;
+        if (!allowed) {
+          return;
+        }
+      } else {
+        promptGuestSignUp();
+        return;
+      }
     }
 
     // Guard on limits
@@ -693,7 +718,8 @@ export default function App() {
 
     } catch (err: any) {
       console.error(err);
-      setApiError(err.message || 'An unexpected error occurred while calling the Gemini AI engine.');
+      const message = err.message || 'An unexpected error occurred while calling the AI engine.';
+      setApiError(message);
     } finally {
       setIsGenerating(false);
     }
@@ -1248,6 +1274,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
       <ClerkSessionBridge onSession={handleClerkSession} />
+      <ClerkAuthPromptBridge onReady={handleClerkAuthPromptReady} />
 
       {/* Dynamic Background Accents */}
       <div className="absolute top-0 right-1/4 w-96 h-96 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -1974,11 +2001,17 @@ export default function App() {
                   <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-xl flex items-start gap-3.5 text-rose-600 dark:text-rose-400 animate-slide-up">
                     <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
                     <div className="text-xs space-y-1">
-                      <p className="font-bold">AI Provider Connection Problem</p>
-                      <p className="leading-relaxed">{apiError}</p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                        Verify that OPENROUTER_API_KEY or GEMINI_API_KEY is configured in your local environment.
+                      <p className="font-bold">
+                        {/OPENROUTER|GEMINI|provider|API key|not configured/i.test(apiError)
+                          ? 'AI Provider Connection Problem'
+                          : 'Generation Failed'}
                       </p>
+                      <p className="leading-relaxed">{apiError}</p>
+                      {/OPENROUTER|GEMINI|provider|API key|not configured/i.test(apiError) && (
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                          Verify that OPENROUTER_API_KEY or GEMINI_API_KEY is configured in your local environment.
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
