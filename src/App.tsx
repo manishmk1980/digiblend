@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Globe,
   Users,
@@ -69,6 +71,18 @@ import { ClerkAuthControls } from './components/auth/ClerkAuthControls';
 import { ClerkSessionBridge } from './components/auth/ClerkSessionBridge';
 import { ClerkAuthPromptBridge, type ClerkAuthPromptApi } from './components/auth/ClerkAuthPromptBridge';
 import { isClerkPubliclyConfigured } from './lib/clerk-config';
+import {
+  AccentColor,
+  accents,
+  getStoredAccentColor,
+  isAccentColor,
+} from './lib/accent-colors';
+
+type AppProps = {
+  appMode?: boolean;
+  initialSection?: 'tools' | 'pricing' | 'account' | 'admin';
+  initialToolSlug?: string;
+};
 
 type BackendOverview = {
   status: 'healthy' | 'not_configured' | 'error';
@@ -80,7 +94,12 @@ type BackendOverview = {
   audits?: number;
 };
 
-export default function App() {
+export default function App({
+  appMode = false,
+  initialSection = 'tools',
+  initialToolSlug,
+}: AppProps) {
+  const router = useRouter();
   // Active User session state
   const [currentUser, setCurrentUser] = useState<SaaSUser | null>(() => {
     if (typeof window !== 'undefined') {
@@ -133,6 +152,24 @@ export default function App() {
   };
 
   const navigateToSection = (section: 'landing' | 'tools' | 'pricing' | 'account') => {
+    if (appMode) {
+      if (section === 'tools') {
+        router.push('/app');
+        setActiveSection('tools');
+        return;
+      }
+      if (section === 'pricing') {
+        router.push('/pricing');
+        return;
+      }
+      if (section === 'account') {
+        router.push('/account');
+        setActiveSection('account');
+        return;
+      }
+      return;
+    }
+
     navigateToPath('/');
     setActiveSection(section);
   };
@@ -300,20 +337,17 @@ export default function App() {
 
   // Navigation & Tool State
   const [activeSection, setActiveSection] = useState<'landing' | 'tools' | 'pricing' | 'account' | 'admin'>(() => {
-    if (typeof window !== 'undefined') {
-      const savedUser = localStorage.getItem('digiblend_current_user');
-      if (savedUser) {
-        try {
-          const parsed = JSON.parse(savedUser);
-          if (parsed && typeof parsed === 'object' && parsed.email) {
-            return 'tools';
-          }
-        } catch {}
-      }
+    if (appMode) {
+      return initialSection;
     }
     return 'landing';
   });
-  const [selectedTool, setSelectedTool] = useState<ToolDefinition>(TOOLS[0]);
+  const [selectedTool, setSelectedTool] = useState<ToolDefinition>(() => {
+    if (initialToolSlug) {
+      return TOOLS.find((tool) => tool.slug === initialToolSlug) || TOOLS[0];
+    }
+    return TOOLS[0];
+  });
   const [toolInputs, setToolInputs] = useState<Record<string, string>>({});
   
   // Generation & API Call States
@@ -341,6 +375,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const handleAccentChange = (event: Event) => {
+      const customEvent = event as CustomEvent<AccentColor>;
+      if (customEvent.detail && isAccentColor(customEvent.detail)) {
+        setAccentColor(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('digiblend-accent-change', handleAccentChange as EventListener);
+    return () => window.removeEventListener('digiblend-accent-change', handleAccentChange as EventListener);
+  }, []);
+
+  useEffect(() => {
+    if (!initialToolSlug) return;
+    const tool = TOOLS.find((item) => item.slug === initialToolSlug);
+    if (tool) {
+      setSelectedTool(tool);
+      setActiveSection('tools');
+    }
+  }, [initialToolSlug]);
+
+  useEffect(() => {
     if (cooldownSeconds <= 0) return;
     const timer = setTimeout(() => {
       setCooldownSeconds(prev => prev - 1);
@@ -356,7 +411,7 @@ export default function App() {
   const [upiId, setUpiId] = useState('');
   
   // Custom View Customization State (Accent Colors)
-  const [accentColor, setAccentColor] = useState<'indigo' | 'emerald' | 'rose' | 'amber' | 'cyan'>('indigo');
+  const [accentColor, setAccentColor] = useState<AccentColor>(() => getStoredAccentColor());
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window !== 'undefined') {
       const savedTheme = localStorage.getItem('theme');
@@ -473,19 +528,16 @@ export default function App() {
 
   // Handle auto transitions on login/logout
   useEffect(() => {
-    if (currentPath === '/') {
-      if (currentUser) {
-        if (activeSection === 'landing') {
-          setActiveSection('tools');
-        }
-      } else {
-        // Logged out
-        if (activeSection !== 'tools' && activeSection !== 'pricing') {
-          setActiveSection('landing');
-        }
+    if (!appMode || currentPath !== '/') return;
+
+    if (currentUser) {
+      if (activeSection === 'landing') {
+        setActiveSection('tools');
       }
+    } else if (activeSection !== 'tools' && activeSection !== 'pricing') {
+      setActiveSection(initialSection);
     }
-  }, [currentUser, currentPath]);
+  }, [currentUser, currentPath, appMode, activeSection, initialSection]);
 
   // Digital product state
   const [playbookPurchased, setPlaybookPurchased] = useState<boolean>(() => {
@@ -543,60 +595,6 @@ export default function App() {
     }
   };
 
-  // Accent mapping class dictionary
-  const accents: Record<string, { bg: string; hoverBg: string; text: string; border: string; glow: string; badge: string; shadow: string; fromTo: string }> = {
-    indigo: {
-      bg: 'bg-indigo-600',
-      hoverBg: 'hover:bg-indigo-700',
-      text: 'text-indigo-600 dark:text-indigo-400',
-      border: 'border-indigo-200 dark:border-indigo-500/30',
-      glow: 'shadow-indigo-500/10 dark:shadow-indigo-500/20',
-      badge: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-100 dark:border-indigo-500/20',
-      shadow: 'shadow-indigo-500/5 dark:shadow-indigo-500/10',
-      fromTo: 'from-indigo-600 to-indigo-400',
-    },
-    emerald: {
-      bg: 'bg-emerald-600',
-      hoverBg: 'hover:bg-emerald-700',
-      text: 'text-emerald-600 dark:text-emerald-400',
-      border: 'border-emerald-200 dark:border-emerald-500/30',
-      glow: 'shadow-emerald-500/10 dark:shadow-emerald-500/20',
-      badge: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-100 dark:border-emerald-500/20',
-      shadow: 'shadow-emerald-500/5 dark:shadow-emerald-500/10',
-      fromTo: 'from-emerald-600 to-emerald-400',
-    },
-    rose: {
-      bg: 'bg-rose-600',
-      hoverBg: 'hover:bg-rose-700',
-      text: 'text-rose-600 dark:text-rose-400',
-      border: 'border-rose-200 dark:border-rose-500/30',
-      glow: 'shadow-rose-500/10 dark:shadow-rose-500/20',
-      badge: 'bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-100 dark:border-rose-500/20',
-      shadow: 'shadow-rose-500/5 dark:shadow-rose-500/10',
-      fromTo: 'from-rose-600 to-rose-400',
-    },
-    amber: {
-      bg: 'bg-amber-600',
-      hoverBg: 'hover:bg-amber-700',
-      text: 'text-amber-600 dark:text-amber-400',
-      border: 'border-amber-200 dark:border-amber-500/30',
-      glow: 'shadow-amber-500/10 dark:shadow-amber-500/20',
-      badge: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-500/20',
-      shadow: 'shadow-amber-500/5 dark:shadow-amber-500/10',
-      fromTo: 'from-amber-600 to-amber-400',
-    },
-    cyan: {
-      bg: 'bg-cyan-600',
-      hoverBg: 'hover:bg-cyan-700',
-      text: 'text-cyan-600 dark:text-cyan-400',
-      border: 'border-cyan-200 dark:border-cyan-500/30',
-      glow: 'shadow-cyan-500/10 dark:shadow-cyan-500/20',
-      badge: 'bg-cyan-50 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-100 dark:border-cyan-500/20',
-      shadow: 'shadow-cyan-500/5 dark:shadow-cyan-500/10',
-      fromTo: 'from-cyan-600 to-cyan-400',
-    },
-  };
-
   const currentAccent = accents[accentColor] || accents.indigo;
 
   // Limit Check: Max 3 total generations per day for FREE users
@@ -617,13 +615,9 @@ export default function App() {
       return clerkAuthPromptRef.current.ensureAuthenticated();
     }
 
-    navigateToSection('landing');
-    setTimeout(() => {
-      const registerSection = document.getElementById('register');
-      registerSection?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    router.push('/sign-up');
     return false;
-  }, []);
+  }, [router]);
 
   // Submission handler
   const handleGenerate = async (e: React.FormEvent) => {
@@ -1361,7 +1355,10 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           
           {/* Logo Brand Title */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigateToSection(currentUser ? 'tools' : 'landing')}>
+          <div
+            className="flex items-center gap-3 cursor-pointer"
+            onClick={() => (appMode ? router.push('/app') : navigateToSection(currentUser ? 'tools' : 'landing'))}
+          >
             <div className={`p-2 rounded-xl bg-gradient-to-tr ${currentAccent.fromTo} text-white shadow-md shadow-indigo-500/10`}>
               <Terminal className="w-5 h-5" />
             </div>
@@ -1371,7 +1368,7 @@ export default function App() {
                   DigiBlend
                 </span>
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-semibold ${plan === 'PRO' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
-                  {plan}
+                  {appMode && currentUser ? plan : 'APP'}
                 </span>
               </div>
               <span className="text-slate-400 dark:text-slate-500 text-[10px] block font-mono">AI-powered SaaS toolkit</span>
@@ -1380,6 +1377,47 @@ export default function App() {
 
           {/* Central Header Navigation Links */}
           <nav className="hidden md:flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200/60 dark:border-slate-800">
+            {appMode ? (
+              <>
+                <Link
+                  href="/app"
+                  className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
+                    activeSection === 'tools'
+                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <Home className="w-3.5 h-3.5" />
+                  Dashboard
+                </Link>
+                <Link
+                  href="/app"
+                  className="px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  AI Utilities
+                </Link>
+                <Link
+                  href="/account"
+                  className={`px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 ${
+                    activeSection === 'account'
+                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <User className="w-3.5 h-3.5" />
+                  Usage & Account
+                </Link>
+                <Link
+                  href="/settings"
+                  className="px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  Profile
+                </Link>
+              </>
+            ) : (
+              <>
             {!currentUser && (
               <button
                 onClick={() => navigateToSection('landing')}
@@ -1426,6 +1464,8 @@ export default function App() {
               <User className="w-3.5 h-3.5" />
               Usage & Account
             </button>
+              </>
+            )}
             {role === 'ADMIN' && (
               <button
                 onClick={() => navigateToPath('/admin')}
@@ -1443,24 +1483,6 @@ export default function App() {
 
           {/* Configuration Controls */}
           <div className="flex items-center gap-3">
-            
-            {/* Color accent controller */}
-            <div className="hidden sm:flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/60 rounded-lg border border-slate-200 dark:border-slate-800">
-              {Object.keys(accents).map((color) => (
-                <button
-                  key={color}
-                  onClick={() => setAccentColor(color as any)}
-                  className={`w-4 h-4 rounded-full transition-transform duration-100 ${
-                    color === 'indigo' ? 'bg-indigo-500' :
-                    color === 'emerald' ? 'bg-emerald-500' :
-                    color === 'rose' ? 'bg-rose-500' :
-                    color === 'amber' ? 'bg-amber-500' : 'bg-cyan-500'
-                  } ${accentColor === color ? 'ring-2 ring-slate-400 dark:ring-white scale-110' : 'opacity-60 hover:opacity-100'}`}
-                  title={`${color.charAt(0).toUpperCase() + color.slice(1)} accent`}
-                />
-              ))}
-            </div>
-
             {/* Dark/Light mode toggle button */}
             <button
               id="theme-toggle"
@@ -1478,7 +1500,7 @@ export default function App() {
             <ClerkAuthControls />
 
             {/* Logged in session card and logout action */}
-            {currentUser && (
+            {appMode && currentUser && !isClerkPubliclyConfigured() && (
               <div className={`flex items-center gap-2 p-1 rounded-xl border transition-all duration-300 ${
                 currentUser.role === 'ADMIN'
                   ? 'bg-rose-500/5 border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.15)] dark:bg-rose-950/10'
@@ -1509,7 +1531,7 @@ export default function App() {
               </div>
             )}
 
-            {!currentUser && !isClerkPubliclyConfigured() && (
+            {!appMode && !currentUser && !isClerkPubliclyConfigured() && (
               <button
                 onClick={() => {
                   navigateToSection('landing');
@@ -1528,7 +1550,7 @@ export default function App() {
             )}
 
             {/* Premium action banner in header */}
-            {plan === 'FREE' ? (
+            {appMode && plan === 'FREE' ? (
               <button
                 onClick={triggerRazorpayCheckout}
                 className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all bg-gradient-to-r ${currentAccent.fromTo} hover:opacity-90 shadow-sm`}
@@ -1536,12 +1558,12 @@ export default function App() {
                 <Sparkles className="w-3.5 h-3.5" />
                 Go PRO
               </button>
-            ) : (
+            ) : appMode && plan === 'PRO' ? (
               <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
                 <UserCheck className="w-3.5 h-3.5" />
                 PRO Active
               </div>
-            )}
+            ) : null}
           </div>
 
         </div>
@@ -1549,7 +1571,48 @@ export default function App() {
       )}
 
       {/* Mobile Sticky Navigation Banner */}
-      {!isAdminWorkspace && (
+      {!isAdminWorkspace && appMode && (
+      <div className="md:hidden flex items-center justify-around bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-900 text-xs py-2 sticky top-16 z-30 shadow-sm">
+        <Link
+          href="/app"
+          className={`flex flex-col items-center gap-1 font-semibold ${activeSection === 'tools' ? currentAccent.text : 'text-slate-500'}`}
+        >
+          <Compass className="w-4 h-4" />
+          <span>Dashboard</span>
+        </Link>
+        <Link
+          href="/app"
+          className={`flex flex-col items-center gap-1 font-semibold ${activeSection === 'tools' ? currentAccent.text : 'text-slate-500'}`}
+        >
+          <Zap className="w-4 h-4" />
+          <span>Tools</span>
+        </Link>
+        <Link
+          href="/account"
+          className={`flex flex-col items-center gap-1 font-semibold ${activeSection === 'account' ? currentAccent.text : 'text-slate-500'}`}
+        >
+          <History className="w-4 h-4" />
+          <span>Usage</span>
+        </Link>
+        <Link
+          href="/settings"
+          className="flex flex-col items-center gap-1 font-semibold text-slate-500"
+        >
+          <User className="w-4 h-4" />
+          <span>Profile</span>
+        </Link>
+        {role === 'ADMIN' && (
+          <button
+            onClick={() => navigateToPath('/admin')}
+            className={`flex flex-col items-center gap-1 font-semibold ${activeSection === 'admin' ? 'text-rose-500' : 'text-slate-500'}`}
+          >
+            <Shield className="w-4 h-4" />
+            <span>Admin</span>
+          </button>
+        )}
+      </div>
+      )}
+      {!isAdminWorkspace && !appMode && (
       <div className="md:hidden flex items-center justify-around bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-900 text-xs py-2 sticky top-16 z-30 shadow-sm">
         {!currentUser && (
           <button
@@ -1597,7 +1660,7 @@ export default function App() {
       <main className="flex-grow max-w-7xl mx-auto px-4 md:px-6 py-8 w-full z-10">
 
         {/* Dynamic Section: CUSTOMER LANDING PAGE */}
-        {activeSection === 'landing' && (
+        {!appMode && activeSection === 'landing' && (
           <CustomerLandingPage
             currentAccent={currentAccent}
             authEmail={authEmail}
@@ -1633,7 +1696,18 @@ export default function App() {
               </p>
 
               {/* Free limits notice indicator */}
-              {!currentUser ? (
+              {appMode && currentUser && plan === 'FREE' && (
+                <div className="inline-flex items-center gap-2 bg-slate-100 dark:bg-slate-900 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                  <span className="text-slate-500 dark:text-slate-400">
+                    Remaining quota: <strong className="text-slate-950 dark:text-slate-100">{3 - todayUsage} of 3 free uses</strong> today
+                  </span>
+                  <button onClick={triggerRazorpayCheckout} className={`ml-2 text-xs font-bold underline ${currentAccent.text} hover:opacity-80`}>
+                    Remove limits
+                  </button>
+                </div>
+              )}
+              {!appMode && !currentUser ? (
                 <div className="inline-flex items-center gap-2.5 bg-indigo-50 dark:bg-indigo-950/20 px-4 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800/60 text-xs">
                   <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
                   <span className="text-slate-600 dark:text-slate-400">
@@ -1652,7 +1726,7 @@ export default function App() {
                     </button> in under 10 seconds!
                   </span>
                 </div>
-              ) : plan === 'FREE' && (
+              ) : !appMode && plan === 'FREE' && currentUser ? (
                 <div className="inline-flex items-center gap-2 bg-slate-100 dark:bg-slate-900 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
                   <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
                   <span className="text-slate-500 dark:text-slate-400">
@@ -1662,7 +1736,7 @@ export default function App() {
                     Remove limits
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Grid Layout: Sidebar Selector & Selected Tool Form */}
@@ -1749,6 +1823,9 @@ export default function App() {
                             setSelectedTool(t);
                             setGenerationResult(null);
                             setApiError(null);
+                            if (appMode) {
+                              router.push(`/app/tools/${t.slug}`);
+                            }
                           }}
                           className={`w-full text-left p-4 rounded-xl border transition-all duration-200 cursor-pointer flex items-start gap-4 select-none ${
                             isSelected

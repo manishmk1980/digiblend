@@ -1,6 +1,17 @@
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
+export const maxDuration = 30;
+
+const OPENROUTER_TIMEOUT_MS = 12_000;
+const MODEL_DISCOVERY_TIMEOUT_MS = 8_000;
+const MAX_MODEL_ATTEMPTS = 3;
+
+const FALLBACK_FREE_MODELS = [
+  'google/gemma-2-9b-it:free',
+  'meta-llama/llama-3.2-3b-instruct:free',
+  'qwen/qwen-2.5-7b-instruct:free',
+];
 
 type ChatMessage = {
   role: 'assistant' | 'user';
@@ -87,6 +98,17 @@ Knowledge base:
 - Privacy policy: digiblend.in/privacy`;
 }
 
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function isZeroPrice(value: string | undefined) {
   if (!value) return false;
   return Number(value) === 0;
@@ -104,35 +126,44 @@ async function getFreeOpenRouterModelIds(apiKey: string) {
     return freeOpenRouterModelsCache.modelIds;
   }
 
-  const response = await fetch('https://openrouter.ai/api/v1/models', {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
-      'X-Title': 'DigiBlend',
-    },
-    next: { revalidate: 3600 },
-  });
+  try {
+    const response = await fetchWithTimeout(
+      'https://openrouter.ai/api/v1/models',
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
+          'X-Title': 'DigiBlend',
+        },
+        cache: 'no-store',
+      },
+      MODEL_DISCOVERY_TIMEOUT_MS,
+    );
 
-  if (!response.ok) {
-    throw new Error(`OpenRouter model discovery failed (${response.status})`);
+    if (!response.ok) {
+      throw new Error(`OpenRouter model discovery failed (${response.status})`);
+    }
+
+    const data = await response.json();
+    const modelIds = ((data?.data || []) as OpenRouterModel[])
+      .filter(isFreeTextModel)
+      .sort((a, b) => (b.context_length || 0) - (a.context_length || 0))
+      .map((model) => model.id);
+
+    if (!modelIds.length) {
+      throw new Error('OpenRouter did not return any free text-generation models.');
+    }
+
+    freeOpenRouterModelsCache = {
+      expiresAt: now + 60 * 60 * 1000,
+      modelIds,
+    };
+
+    return modelIds;
+  } catch (error) {
+    console.warn('[Support Chat] Model discovery failed, using fallback models.', error);
+    return FALLBACK_FREE_MODELS;
   }
-
-  const data = await response.json();
-  const modelIds = ((data?.data || []) as OpenRouterModel[])
-    .filter(isFreeTextModel)
-    .sort((a, b) => (b.context_length || 0) - (a.context_length || 0))
-    .map((model) => model.id);
-
-  if (!modelIds.length) {
-    throw new Error('OpenRouter did not return any free text-generation models.');
-  }
-
-  freeOpenRouterModelsCache = {
-    expiresAt: now + 60 * 60 * 1000,
-    modelIds,
-  };
-
-  return modelIds;
 }
 
 async function getCandidateModels(apiKey: string) {
@@ -140,10 +171,10 @@ async function getCandidateModels(apiKey: string) {
   const freeModels = await getFreeOpenRouterModelIds(apiKey);
 
   if (!configuredModel || configuredModel === 'auto:free') {
-    return freeModels;
+    return freeModels.slice(0, MAX_MODEL_ATTEMPTS);
   }
 
-  return [configuredModel, ...freeModels.filter((model) => model !== configuredModel)];
+  return [configuredModel, ...freeModels.filter((model) => model !== configuredModel)].slice(0, MAX_MODEL_ATTEMPTS);
 }
 
 function shouldTryNext(status: number, errorText: string) {
@@ -151,36 +182,56 @@ function shouldTryNext(status: number, errorText: string) {
 }
 
 async function callOpenRouterModel(apiKey: string, model: string, messages: { role: string; content: string }[]) {
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
-      'X-Title': 'DigiBlend',
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.3,
-    }),
-  });
+  try {
+    const response = await fetchWithTimeout(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
+          'X-Title': 'DigiBlend',
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0.3,
+          max_tokens: 400,
+        }),
+        cache: 'no-store',
+      },
+      OPENROUTER_TIMEOUT_MS,
+    );
 
-  if (!response.ok) {
-    const errorText = await response.text();
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        reply: null,
+        error: new Error(`OpenRouter chat error (${response.status}) for ${model}: ${errorText}`),
+        tryNext: shouldTryNext(response.status, errorText),
+      };
+    }
+
+    const data = await response.json();
+    return {
+      reply: data?.choices?.[0]?.message?.content || null,
+      error: null,
+      tryNext: false,
+    };
+  } catch (error) {
+    const message = error instanceof Error && error.name === 'AbortError'
+      ? `OpenRouter chat timed out for ${model}.`
+      : error instanceof Error
+        ? error.message
+        : `OpenRouter chat failed for ${model}.`;
+
     return {
       reply: null,
-      error: new Error(`OpenRouter chat error (${response.status}) for ${model}: ${errorText}`),
-      tryNext: shouldTryNext(response.status, errorText),
+      error: new Error(message),
+      tryNext: true,
     };
   }
-
-  const data = await response.json();
-  return {
-    reply: data?.choices?.[0]?.message?.content || null,
-    error: null,
-    tryNext: false,
-  };
 }
 
 export async function POST(request: Request) {
@@ -223,6 +274,7 @@ export async function POST(request: Request) {
     throw lastError || new Error('No OpenRouter free chat model returned a reply.');
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Support chat failed.';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = /timed out|timeout/i.test(message) ? 504 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

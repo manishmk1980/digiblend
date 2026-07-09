@@ -6,6 +6,12 @@ const App = dynamic(() => import('../src/App'), {
   ssr: false,
 });
 
-export default function ClientPage() {
-  return <App />;
+export type ClientPageProps = {
+  appMode?: boolean;
+  initialSection?: 'tools' | 'pricing' | 'account' | 'admin';
+  initialToolSlug?: string;
+};
+
+export default function ClientPage({ appMode = false, initialSection = 'tools', initialToolSlug }: ClientPageProps) {
+  return <App appMode={appMode} initialSection={initialSection} initialToolSlug={initialToolSlug} />;
 }

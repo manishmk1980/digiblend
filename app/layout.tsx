@@ -4,8 +4,9 @@ import OptionalClerkProvider from './clerk-provider';
 import '../src/index.css';
 
 export const metadata: Metadata = {
-  title: 'DigiBlend',
-  description: 'AI-powered GTM and marketing utilities.',
+  title: 'DigiBlend | AI utilities for faster marketing execution',
+  description:
+    'Focused AI utilities for SEO metadata, social bios, cold emails, ad copy, and marketing content for freelancers and small teams.',
 };
 
 export default function RootLayout({

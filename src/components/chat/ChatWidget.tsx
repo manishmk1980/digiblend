@@ -29,6 +29,24 @@ const SUGGESTION_CHIPS = [
   'How do credits work?',
 ];
 
+async function readChatApiResponse(response: Response) {
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text) as { reply?: string; error?: string };
+  } catch {
+    if (response.status === 504 || response.status === 502 || response.status === 503) {
+      throw new Error('Support chat timed out. Please try again in a moment.');
+    }
+
+    if (response.status >= 500) {
+      throw new Error('Support chat is temporarily unavailable. Please try again shortly.');
+    }
+
+    throw new Error('Support chat returned an unexpected response. Please try again.');
+  }
+}
+
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
@@ -102,7 +120,7 @@ export function ChatWidget() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: nextMessages }),
       });
-      const data = await response.json();
+      const data = await readChatApiResponse(response);
 
       if (!response.ok) {
         throw new Error(data.error || 'Support chat failed');
@@ -113,7 +131,9 @@ export function ChatWidget() {
       setLastResponse(reply);
     } catch (error) {
       const messageText = error instanceof Error ? error.message : 'Support chat failed';
-      const errorReply = `I could not connect to support chat right now. ${messageText}`;
+      const errorReply = messageText.startsWith('Support chat')
+        ? messageText
+        : `I could not connect to support chat right now. ${messageText}`;
       setMessages([...nextMessages, { role: 'assistant', content: errorReply }]);
     } finally {
       setIsSending(false);
